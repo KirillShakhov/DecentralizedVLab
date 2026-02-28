@@ -1,6 +1,8 @@
-﻿FROM mcr.microsoft.com/dotnet/runtime:10.0 AS base
+﻿# Используем образ aspnet, так как нам нужен веб-сервер, а не просто консольный рантайм
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 USER $APP_UID
 WORKDIR /app
+EXPOSE 8080
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
