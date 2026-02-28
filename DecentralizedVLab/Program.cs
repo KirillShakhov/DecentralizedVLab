@@ -1,29 +1,44 @@
 ﻿using DecentralizedVLab.Hubs;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Добавляем SignalR
-builder.Services.AddSignalR();
+builder.Services.AddSignalR()
+    .AddMessagePackProtocol();
 
-// Настраиваем CORS для локальной разработки (Vite обычно висит на 5173)
+// Политика CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowViteFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
+        policy.WithOrigins(
+                "http://localhost:8080",
+                "http://127.0.0.1:8080", 
+                "http://localhost:5173"
+            )
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials(); // Обязательно для SignalR (WebSockets)
+            .AllowCredentials();
     });
+});
+
+// 2. Настраиваем доверие к прокси-серверу (YARP)
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
 });
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
+
 app.UseCors("AllowViteFrontend");
 
-// Мапим наш хаб на определенный URL
 app.MapHub<SyncHub>("/sync-hub");
 
-app.MapGet("/", () => "Sync Server is running. Architecture: Decentralized.");
+app.MapGet("/", () => "Backend is ready.");
 
 app.Run();
