@@ -9,17 +9,41 @@ export default function Workspace({ roomId }) {
     const editorInstanceRef = useRef(null);
 
     useEffect(() => {
+        // 1. Защита от двойной загрузки в React Strict Mode
+        if (document.getElementById('pyodide-script')) {
+            return;
+        }
+
         const loadWasm = async () => {
+            // 2. ВРЕМЕННО ПРЯЧЕМ AMD-загрузчик Monaco
+            // Иначе Pyodide попытается встроиться в него, и window.loadPyodide не создастся
+            const globalDefine = window.define;
+            window.define = undefined;
+
             const script = document.createElement('script');
+            script.id = 'pyodide-script';
             script.src = 'https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js';
             script.async = true;
+
             script.onload = async () => {
-                pyodideRef.current = await window.loadPyodide();
-                setIsWasmReady(true);
-                setOutput('✅ WASM Python загружен и готов к локальному выполнению!');
+                // 3. Возвращаем загрузчик Monaco на место, как только скрипт загрузился
+                window.define = globalDefine;
+
+                try {
+                    pyodideRef.current = await window.loadPyodide({
+                        // Указываем URL для подгрузки стандартной библиотеки Python
+                        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"
+                    });
+                    setIsWasmReady(true);
+                    setOutput('✅ WASM Python загружен и готов к локальному выполнению!');
+                } catch (err) {
+                    setOutput(`❌ Ошибка загрузки WASM: ${err.message}`);
+                }
             };
+
             document.body.appendChild(script);
         };
+
         loadWasm();
     }, []);
 
