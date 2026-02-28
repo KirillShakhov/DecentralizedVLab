@@ -1,22 +1,27 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import * as Y from 'yjs';
 import { MonacoBinding } from 'y-monaco';
-import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack';
+import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 
-export default function CodeEditor({ roomId }) {
+
+export default function CodeEditor({ roomId, onEditorReady }) {
     const editorRef = useRef(null);
     const ydocRef = useRef(null);
     const connectionRef = useRef(null);
 
     const handleEditorDidMount = async (editor, monaco) => {
         editorRef.current = editor;
+
+        if (onEditorReady) {
+            onEditorReady(editor);
+        }
+
         const ydoc = new Y.Doc();
         ydocRef.current = ydoc;
         const ytext = ydoc.getText('monaco');
 
-        // 1. Настройка подключения
         const connection = new HubConnectionBuilder()
             .withUrl('/sync-hub')
             .withAutomaticReconnect()
@@ -26,31 +31,30 @@ export default function CodeEditor({ roomId }) {
 
         connectionRef.current = connection;
 
-        // 2. Обработка входящих обновлений
+        connection.on('UserJoined', (connectionId) => {
+            console.log(`[Комната] Подключился новый участник: ${connectionId}`);
+        });
+
+        connection.on('UserLeft', (connectionId) => {
+            console.log(`[Комната] Участник покинул лабораторию: ${connectionId}`);
+        });
+
         connection.on('ReceiveDocumentUpdate', (updateAsArray) => {
-            console.log('Получено обновление из сети, байт:', updateAsArray.length);
-            // Конвертируем массив чисел обратно в Uint8Array для Y.js
             const update = new Uint8Array(updateAsArray);
             Y.applyUpdate(ydoc, update, 'signalr');
         });
 
         try {
             await connection.start();
-            console.log('SignalR подключен. Входим в комнату:', roomId);
-
             await connection.invoke('JoinRoom', roomId);
 
-            // 3. Отправка локальных обновлений
             ydoc.on('update', (update, origin) => {
                 if (origin !== 'signalr') {
-                    console.log('Отправка локального изменения...');
-                    // Передаем как массив, чтобы SignalR точно его переварил
-                    connection.invoke('SendDocumentUpdate', roomId, Array.from(update))
+                    connection.invoke('SendDocumentUpdate', roomId, update)
                         .catch(err => console.error('Ошибка отправки:', err));
                 }
             });
 
-            // 4. Связка с Monaco
             new MonacoBinding(ytext, editorRef.current.getModel(), new Set([editorRef.current]));
 
         } catch (err) {
