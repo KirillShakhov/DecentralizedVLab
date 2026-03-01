@@ -56,5 +56,37 @@ export const PythonCompiler = {
         await pyodideInstance.runPythonAsync(code);
         const stdout = await pyodideInstance.runPythonAsync("sys.stdout.getvalue()");
         logOutput(stdout || 'Программа выполнена (нет вывода)');
-    }
+    },
+
+    // Проверяем, есть ли на сервере файл новее, чем у нас в кэше
+    async checkForUpdates(): Promise<boolean> {
+        try {
+            const cache = await caches.open(CACHE_NAME);
+            const cachedReq = await cache.match(ASSETS[0]); // Проверяем по главному файлу
+            if (!cachedReq) return false;
+
+            // Делаем легкий HEAD запрос в обход браузерного кэша
+            const netReq = await fetch(ASSETS[0], { method: 'HEAD', cache: 'no-cache' });
+
+            const cachedDate = cachedReq.headers.get('last-modified');
+            const netDate = netReq.headers.get('last-modified');
+
+            // Если даты отличаются, значит на сервере новая версия
+            if (cachedDate && netDate && cachedDate !== netDate) return true;
+
+            // Резервная проверка по размеру файла
+            const cachedSize = cachedReq.headers.get('content-length');
+            const netSize = netReq.headers.get('content-length');
+            if (cachedSize && netSize && cachedSize !== netSize) return true;
+
+            return false;
+        } catch (e) {
+            return false; // Если нет интернета, обновы проверить нельзя
+        }
+    },
+
+    // Удаляем компилятор из памяти устройства
+    async removeOffline(): Promise<void> {
+        await caches.delete(CACHE_NAME);
+    },
 };

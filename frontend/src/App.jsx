@@ -4,63 +4,48 @@ import Workspace from './components/Workspace/Workspace';
 
 function App() {
     const [roomId] = useState('lab-task-001');
-    const [isOnline, setIsOnline] = useState(navigator.onLine);
+    const [isOnline, setIsOnline] = useState(true);
 
+    // Глобальная проверка доступности нашего бэкенда
     useEffect(() => {
-        let interval;
-
         const checkServerStatus = async () => {
-            // Если даже Wi-Fi отключен, сразу ставим офлайн
             if (!navigator.onLine) {
                 setIsOnline(false);
                 return;
             }
-
             try {
-                // Пытаемся достучаться до нашего сервера (делаем легкий HEAD запрос)
-                // Если Docker выключен, запрос упадет с ошибкой
                 await fetch('/', { method: 'HEAD', cache: 'no-store' });
                 setIsOnline(true);
             } catch (error) {
-                // Сервер недоступен!
                 setIsOnline(false);
             }
         };
 
-        // Проверяем статус при загрузке
         checkServerStatus();
-
-        // Запускаем проверку каждые 5 секунд
-        interval = setInterval(checkServerStatus, 5000);
-
-        // Оставляем слушатели на случай физического отключения кабеля
-        window.addEventListener('online', checkServerStatus);
-        window.addEventListener('offline', () => setIsOnline(false));
-
-        return () => {
-            clearInterval(interval);
-            window.removeEventListener('online', checkServerStatus);
-            window.removeEventListener('offline', () => setIsOnline(false));
-        };
+        const interval = setInterval(checkServerStatus, 5000);
+        return () => clearInterval(interval);
     }, []);
 
     return (
         <div style={{ padding: '20px', fontFamily: 'sans-serif', backgroundColor: '#121212', color: '#e0e0e0', minHeight: '100vh' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#1e1e1e', padding: '15px', borderRadius: '8px', border: '1px solid #333' }}>
                 <Header roomId={roomId} />
+
+                {/* Индикатор сервера */}
                 <div style={{
                     padding: '5px 15px',
                     borderRadius: '20px',
-                    backgroundColor: isOnline ? '#004d00' : '#4d0000',
-                    color: isOnline ? '#00ff00' : '#ff3333',
-                    border: `1px solid ${isOnline ? '#00ff00' : '#ff3333'}`,
+                    backgroundColor: isOnline ? 'rgba(0, 255, 0, 0.1)' : 'rgba(255, 0, 0, 0.1)',
+                    color: isOnline ? '#10b981' : '#ef4444',
+                    border: `1px solid ${isOnline ? '#10b981' : '#ef4444'}`,
                     fontWeight: 'bold',
                     fontSize: '14px'
                 }}>
-                    {isOnline ? '● ONLINE' : '○ OFFLINE MODE'}
+                    {isOnline ? '● СЕРВЕР ДОСТУПЕН' : '○ РАБОТА БЕЗ СЕТИ'}
                 </div>
             </div>
-            <Workspace roomId={roomId} />
+
+            <Workspace roomId={roomId} isOnline={isOnline} />
         </div>
     );
 }
