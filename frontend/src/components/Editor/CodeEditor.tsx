@@ -6,7 +6,7 @@ import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack';
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 
 
-export default function CodeEditor({ roomId, onEditorReady }) {
+export default function CodeEditor({ roomId, language, onEditorReady }) {
     const editorRef = useRef(null);
     const ydocRef = useRef(null);
     const connectionRef = useRef(null);
@@ -67,7 +67,7 @@ export default function CodeEditor({ roomId, onEditorReady }) {
             <Editor
                 height="60vh"
                 theme="vs-dark"
-                defaultLanguage="python"
+                language={language}
                 onMount={handleEditorDidMount}
                 options={{ minimap: { enabled: false }, fontSize: 16 }}
             />
