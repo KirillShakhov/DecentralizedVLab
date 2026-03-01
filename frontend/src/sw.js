@@ -1,31 +1,31 @@
 /* eslint-disable no-restricted-globals */
 
-// Манифест от Vite
 const manifestAssets = self.__WB_MANIFEST || [];
-
-// Исправляем формирование путей: добавляем префикс '/', если его нет
 let coreUrls = manifestAssets.map(entry => {
     const url = typeof entry === 'string' ? entry : entry.url;
     return url.startsWith('/') ? url : `/${url}`;
 });
-
-// Базовые пути для SPA
 if (!coreUrls.includes('/')) coreUrls.push('/');
-
 coreUrls = [...new Set(coreUrls)];
 
+// ИМЯ ТЕКУЩЕГО КЭША (важно для ротации)
+const CURRENT_CORE_CACHE = 'lab-core-cache';
+
 self.addEventListener('install', () => self.skipWaiting());
+
+// АГРЕССИВНАЯ АКТИВАЦИЯ
 self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys().then((cacheNames) => {
             return Promise.all(
                 cacheNames
                     .filter((name) => {
-                        return name.includes('workbox-precache') ||
-                            (name.includes('lab-core') && name !== 'lab-core-cache');
+                        // Удаляем ВСЁ, что не является компилятором и не является текущим кэшем ядра
+                        const isCompiler = name.includes('wasm-compiler') || name.includes('pyodide') || name.includes('sql');
+                        return !isCompiler && name !== CURRENT_CORE_CACHE;
                     })
                     .map((name) => {
-                        console.log('[PWA SW] Авто-удаление старого кэша:', name);
+                        console.log('[PWA SW] Удаление устаревшего/дублирующего кэша:', name);
                         return caches.delete(name);
                     })
             );
@@ -33,77 +33,60 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-// 1. УЛУЧШЕННЫЙ ЗАГРУЗЧИК
 self.addEventListener('message', async (event) => {
     if (!event.data) return;
 
     if (event.data.type === 'CACHE_LAB') {
-        await caches.delete('lab-core-cache');
-
-        console.log('[PWA SW] Начало загрузки. Файлов в очереди:', coreUrls.length);
-
+        console.log('[PWA SW] Принудительная перезапись системы...');
         try {
-            const cache = await caches.open('lab-core-cache');
+            // ПЕРЕД ЗАГРУЗКОЙ: Полностью сносим старый кэш, чтобы не было наслоения (утечки)
+            await caches.delete(CURRENT_CORE_CACHE);
+
+            const cache = await caches.open(CURRENT_CORE_CACHE);
             let cachedCount = 0;
 
             for (const url of coreUrls) {
                 try {
-                    // Используем { cache: 'reload' } чтобы гарантированно взять свежее с сервера
-                    const response = await fetch(new Request(url, { cache: 'reload' }));
-
+                    const response = await fetch(new Request(url, { cache: 'no-store' }));
                     if (response.ok) {
                         await cache.put(url, response);
                         cachedCount++;
-                        // Логируем прогресс в консоль (увидишь в DevTools)
-                        if (cachedCount % 5 === 0) console.log(`[PWA SW] Загружено ${cachedCount} файлов...`);
-                    } else {
-                        console.error(`[PWA SW] Ошибка ${response.status} при загрузке: ${url}`);
                     }
                 } catch (err) {
-                    console.error(`[PWA SW] Не удалось скачать: ${url}`, err);
+                    console.error(`[PWA SW] Ошибка загрузки ${url}`, err);
                 }
             }
-
-            if (cachedCount > 0) {
-                console.log(`[PWA SW] Загрузка завершена! Всего файлов в кэше: ${cachedCount}`);
-                event.source.postMessage({ type: 'LAB_CACHED_SUCCESS' });
-            } else {
-                throw new Error("Ни один файл не был сохранен.");
-            }
+            console.log(`[PWA SW] Система обновлена. Файлов: ${cachedCount}`);
+            event.source.postMessage({ type: 'LAB_CACHED_SUCCESS' });
         } catch (err) {
-            console.error('[PWA SW] Критическая ошибка загрузки:', err);
             event.source.postMessage({ type: 'LAB_CACHED_ERROR', error: err.message });
         }
     }
 
     if (event.data.type === 'CLEAR_LAB_CACHE') {
-        console.log('[PWA SW] Очистка всех системных кэшей...');
+        console.log('[PWA SW] Команда на полную зачистку ресурсов системы');
         const names = await caches.keys();
         await Promise.all(
-            names.filter(n => n.includes('lab-core')).map(n => caches.delete(n))
+            names
+                .filter(n => !n.includes('wasm-compiler') && !n.includes('pyodide') && !n.includes('sql'))
+                .map(n => caches.delete(n))
         );
-        console.log('[PWA SW] Кэш полностью удален');
         event.source.postMessage({ type: 'LAB_CLEARED_SUCCESS' });
     }
 });
 
-// 2. ПЕРЕХВАТЧИК
+// ПЕРЕХВАТЧИК (Fetch)
 self.addEventListener('fetch', (event) => {
     if (event.request.method !== 'GET') return;
-
     const url = new URL(event.request.url);
-
-    // Исключаем API и SignalR из кэширования воркером
     if (url.pathname.startsWith('/hub') || url.pathname.startsWith('/api')) return;
 
     event.respondWith(
         caches.match(event.request).then((cached) => {
-            // Если файл есть в кэше — отдаем, иначе идем в сеть
+            // Если в кэше есть — отдаем, иначе идем в сеть
+            // Это предотвращает бесконечный рост, так как мы не пишем в кэш здесь "на лету"
             return cached || fetch(event.request).catch(() => {
-                // Если сети нет и это навигация — отдаем index.html (SPA)
-                if (event.request.mode === 'navigate') {
-                    return caches.match('/');
-                }
+                if (event.request.mode === 'navigate') return caches.match('/');
                 return new Response("Offline", { status: 503 });
             });
         })
