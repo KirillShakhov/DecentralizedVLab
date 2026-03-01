@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 
+const CORE_CACHE_PREFIX = 'lab-core';
+
 export function useAppManager() {
     const [isAppReady, setIsAppReady] = useState(false);
     const [isOnline, setIsOnline] = useState(true);
@@ -97,6 +99,12 @@ export function useAppManager() {
                 alert(`Ошибка скачивания: ${event.data.error}`);
                 setIsLabDownloading(false);
             }
+            if (event.data && event.data.type === 'LAB_CLEARED_SUCCESS') {
+                console.log("Кэш успешно очищен воркером");
+                setIsLabCached(false);
+                setHasLabUpdate(false);
+                window.location.reload(true);
+            }
         };
         navigator.serviceWorker.addEventListener('message', handleSWMessage);
 
@@ -132,10 +140,38 @@ export function useAppManager() {
     };
 
     const handleDeleteLabCore = async () => {
-        if (window.confirm("Удалить интерфейс лаборатории из устройства?")) {
-            await caches.delete('lab-core-cache');
-            setIsLabCached(false);
-            setHasLabUpdate(false);
+        if (window.confirm("Полная очистка: удалить интерфейс и все дубликаты кэша?")) {
+            try {
+                // 1. Получаем список ВЕХ кэшей в браузере
+                const cacheNames = await caches.keys();
+
+                // 2. Определяем, что МЫ НЕ ХОТИМ удалять (компиляторы)
+                const compilersPrefixes = ['wasm-compiler', 'sql-wasm', 'pyodide'];
+
+                const deletionPromises = cacheNames.map(name => {
+                    // Если кэш НЕ относится к компиляторам, значит это системный мусор или ядро
+                    const isCompiler = compilersPrefixes.some(p => name.includes(p));
+
+                    if (!isCompiler) {
+                        console.log(`[Storage] Удаление лишнего кэша: ${name}`);
+                        return caches.delete(name);
+                    }
+                    return Promise.resolve();
+                });
+
+                await Promise.all(deletionPromises);
+
+                // 3. Отправляем команду в SW, чтобы он тоже "забыл" ресурсы
+                if (navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_LAB_CACHE' });
+                }
+
+                // 4. Очистка состояния и жесткая перезагрузка
+                setIsLabCached(false);
+                window.location.reload(true);
+            } catch (err) {
+                console.error("Ошибка зачистки:", err);
+            }
         }
     };
 

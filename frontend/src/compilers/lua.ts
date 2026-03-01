@@ -4,7 +4,7 @@ const ASSETS = [
     '/compilers/lua/wasmoon.wasm'
 ];
 
-const CACHE_NAME = 'wasm-compiler-lua-v116';
+const CACHE_NAME = 'wasm-compiler-lua';
 let luaEngine: any = null;
 
 export const LuaCompiler = {

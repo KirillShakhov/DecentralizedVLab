@@ -17,6 +17,6 @@ export const COMPILERS: Record<string, any> = {
 export const COMPILER_CACHES = {
     python: 'wasm-compiler-python',
     java: 'wasm-compiler-java',
-    lua: 'wasm-compiler-lua-v116',
+    lua: 'wasm-compiler-lua',
     sqlite: 'wasm-compiler-sqlite'
 };
