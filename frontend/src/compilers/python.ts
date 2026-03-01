@@ -1,10 +1,9 @@
-// Обрати внимание: теперь мы используем .mjs вместо .js
 const ASSETS = [
-    '/pyodide/pyodide.mjs',
-    '/pyodide/pyodide.asm.wasm',
-    '/pyodide/pyodide.asm.js',
-    '/pyodide/python_stdlib.zip',
-    '/pyodide/repodata.json'
+    '/compilers/pyodide/pyodide.mjs',
+    '/compilers/pyodide/pyodide.asm.wasm',
+    '/compilers/pyodide/pyodide.asm.js',
+    '/compilers/pyodide/python_stdlib.zip',
+    '/compilers/pyodide/repodata.json'
 ];
 
 const CACHE_NAME = 'wasm-compiler-python';
@@ -34,16 +33,18 @@ export const PythonCompiler = {
         if (pyodideInstance) return;
 
         try {
-            // Прячем путь в переменную, чтобы Rollup не пытался разрезолвить его при сборке
-            const moduleUrl = '/pyodide/pyodide.mjs';
-
-            // Динамический импорт сработает уже в браузере клиента
-            const pyodideModule = await import(/* @vite-ignore */ moduleUrl);
+            const moduleUrl = '/compilers/pyodide/pyodide.mjs';
+            const dynamicImport = new Function('url', 'return import(url)');
+            const pyodideModule = await dynamicImport(moduleUrl);
 
             pyodideInstance = await pyodideModule.loadPyodide({
-                indexURL: '/pyodide/'
+                indexURL: '/compilers/pyodide/'
             });
         } catch (err: any) {
+            // Перехватываем ошибку отсутствия сети/файла
+            if (err.message.includes('Failed to fetch') || err.message.includes('network')) {
+                throw new Error("Компилятор не скачан для работы без сети. Подключитесь к серверу и нажмите 'Скачать для офлайн'.");
+            }
             throw new Error(`Не удалось инициализировать Pyodide: ${err.message}`);
         }
     },
