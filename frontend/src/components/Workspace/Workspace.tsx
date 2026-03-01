@@ -14,8 +14,8 @@ export default function Workspace({ roomId, isOnline }) {
     const [output, setOutput] = useState('Выберите компилятор...');
     const [isEngineReady, setIsEngineReady] = useState(false);
 
-    // Гранулярные состояния для ТЕКУЩЕГО компилятора
-    const [compilerStatus, setCompilerStatus] = useState({
+    // Состояния текущего компилятора
+    const [status, setStatus] = useState({
         isDownloaded: false,
         hasUpdate: false,
         isDownloading: false,
@@ -24,31 +24,33 @@ export default function Workspace({ roomId, isOnline }) {
 
     const editorInstanceRef = useRef(null);
 
-    // Проверка статуса текущего компилятора
     const checkCurrentCompiler = async (langId) => {
+        if (langId === 'javascript') {
+            setStatus({ isDownloaded: true, hasUpdate: false, isDownloading: false, progress: 0 });
+            return;
+        }
+
         const compiler = COMPILERS[langId];
         const downloaded = await compiler.isDownloaded();
         let updateAvailable = false;
 
-        // Проверяем обновления, только если он уже скачан и есть сеть
         if (downloaded && isOnline) {
             updateAvailable = await compiler.checkForUpdates();
         }
 
-        setCompilerStatus(prev => ({
-            ...prev,
-            isDownloaded: downloaded,
-            hasUpdate: updateAvailable
-        }));
+        setStatus(prev => ({ ...prev, isDownloaded: downloaded, hasUpdate: updateAvailable }));
     };
 
-    // Инициализация движка при смене языка
+    useEffect(() => {
+        checkCurrentCompiler(currentLang);
+        const interval = setInterval(() => checkCurrentCompiler(currentLang), 30000);
+        return () => clearInterval(interval);
+    }, [currentLang, isOnline]);
+
     useEffect(() => {
         const setupCompiler = async () => {
             setIsEngineReady(false);
             const compiler = COMPILERS[currentLang];
-
-            await checkCurrentCompiler(currentLang);
 
             try {
                 setOutput(`Инициализация движка ${compiler.name}...`);
@@ -56,20 +58,12 @@ export default function Workspace({ roomId, isOnline }) {
                 setIsEngineReady(true);
                 setOutput(`✅ Среда ${compiler.name} готова!`);
             } catch (err) {
-                if (err.message.includes('не скачан')) {
-                    setOutput(`⚠️ Компилятор ${compiler.name} не установлен для офлайн-работы. Нажмите "Скачать".`);
-                } else {
-                    setOutput(`❌ Ошибка инициализации: ${err.message}`);
-                }
+                setOutput(`⚠️ ${err.message}`);
             }
         };
 
-        setupCompiler();
-
-        // Периодическая проверка обновлений (раз в 30 сек)
-        const interval = setInterval(() => checkCurrentCompiler(currentLang), 30000);
-        return () => clearInterval(interval);
-    }, [currentLang, isOnline]);
+        if (!status.isDownloading) setupCompiler();
+    }, [currentLang, status.isDownloaded, status.isDownloading]);
 
     const handleLangChange = (e) => {
         const newLang = e.target.value;
@@ -79,46 +73,45 @@ export default function Workspace({ roomId, isOnline }) {
         }
     };
 
+    const handleDownload = async () => {
+        setStatus(prev => ({ ...prev, isDownloading: true, progress: 0 }));
+        try {
+            await COMPILERS[currentLang].downloadForOffline(p => setStatus(prev => ({ ...prev, progress: p })));
+            await checkCurrentCompiler(currentLang);
+        } catch (e) {
+            alert("Ошибка скачивания.");
+        } finally {
+            setStatus(prev => ({ ...prev, isDownloading: false }));
+        }
+    };
+
+    const handleUpdate = async () => {
+        setStatus(prev => ({ ...prev, isDownloading: true, progress: 0 }));
+        try {
+            await COMPILERS[currentLang].downloadForOffline(p => setStatus(prev => ({ ...prev, progress: p })));
+            window.location.reload();
+        } catch (e) {
+            alert("Ошибка обновления.");
+            setStatus(prev => ({ ...prev, isDownloading: false }));
+        }
+    };
+
+    const handleDelete = async () => {
+        if (window.confirm("Удалить компилятор с устройства?")) {
+            await COMPILERS[currentLang].removeOffline();
+            await checkCurrentCompiler(currentLang);
+            setOutput(`🗑️ Движок удален.`);
+            setIsEngineReady(false);
+        }
+    };
+
     const runCode = async () => {
         if (!editorInstanceRef.current) return;
         setOutput('Выполнение...');
         try {
             await COMPILERS[currentLang].run(editorInstanceRef.current.getValue(), setOutput);
         } catch (err) {
-            setOutput(`❌ Ошибка выполнения:\n${err.toString()}`);
-        }
-    };
-
-    // Действия с компилятором
-    const handleDownloadOrUpdate = async () => {
-        setCompilerStatus(prev => ({ ...prev, isDownloading: true, progress: 0 }));
-        try {
-            await COMPILERS[currentLang].downloadForOffline((p) => {
-                setCompilerStatus(prev => ({ ...prev, progress: p }));
-            });
-
-            // Если это было обновление, перезагружаем страницу для чистого старта WASM
-            if (compilerStatus.hasUpdate) {
-                window.location.reload();
-            } else {
-                await checkCurrentCompiler(currentLang);
-                // Пробуем запустить инициализацию снова, раз уж скачали
-                await COMPILERS[currentLang].init();
-                setIsEngineReady(true);
-                setOutput(`✅ Среда ${COMPILERS[currentLang].name} успешно загружена и готова!`);
-            }
-        } catch (e) {
-            alert("Ошибка сети при загрузке компилятора.");
-        } finally {
-            setCompilerStatus(prev => ({ ...prev, isDownloading: false }));
-        }
-    };
-
-    const handleDelete = async () => {
-        if (window.confirm(`Удалить компилятор ${COMPILERS[currentLang].name} с устройства?`)) {
-            await COMPILERS[currentLang].removeOffline();
-            await checkCurrentCompiler(currentLang);
-            setOutput(`🗑️ Движок ${COMPILERS[currentLang].name} удален из памяти.`);
+            setOutput(`❌ Ошибка: ${err.message}`);
         }
     };
 
@@ -126,53 +119,36 @@ export default function Workspace({ roomId, isOnline }) {
         <main style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
             <section style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
-                {/* ПАНЕЛЬ УПРАВЛЕНИЯ ТЕКУЩИМ КОМПИЛЯТОРОМ */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1e1e1e', padding: '10px', borderRadius: '8px' }}>
+                {/* ПАНЕЛЬ УПРАВЛЕНИЯ КОМПИЛЯТОРОМ */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1e1e1e', padding: '10px', borderRadius: '8px', border: '1px solid #333' }}>
                     <div>
-                        <span style={{ marginRight: '10px', color: '#aaa' }}>Движок:</span>
-                        <select
-                            value={currentLang}
-                            onChange={handleLangChange}
-                            style={{ padding: '8px', borderRadius: '4px', backgroundColor: '#333', color: 'white', border: '1px solid #555' }}
-                        >
-                            {Object.values(COMPILERS).map((c) => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
+                        <select value={currentLang} onChange={handleLangChange} style={{ padding: '8px', borderRadius: '4px', backgroundColor: '#333', color: 'white', border: '1px solid #555' }}>
+                            {Object.values(COMPILERS).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                     </div>
 
-                    {/* Индивидуальные элементы управления компилятором */}
                     {currentLang !== 'javascript' && (
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            {status.isDownloading && <span style={{ color: '#3b82f6', fontSize: '13px' }}>Грузим... {status.progress}%</span>}
 
-                            {compilerStatus.isDownloading && (
-                                <span style={{ color: '#3b82f6', fontSize: '14px' }}>Грузим... {compilerStatus.progress}%</span>
-                            )}
-
-                            {/* Если не скачан */}
-                            {!compilerStatus.isDownloaded && !compilerStatus.isDownloading && (
-                                <button onClick={handleDownloadOrUpdate} style={{ padding: '6px 12px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }}>
-                                    ☁️ Скачать
+                            {!status.isDownloaded && !status.isDownloading && (
+                                <button onClick={handleDownload} style={{ padding: '6px 12px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }}>
+                                    ⬇️ Скачать компилятор
                                 </button>
                             )}
 
-                            {/* Если скачан и есть обнова */}
-                            {compilerStatus.isDownloaded && compilerStatus.hasUpdate && !compilerStatus.isDownloading && (
-                                <button onClick={handleDownloadOrUpdate} style={{ padding: '6px 12px', backgroundColor: '#d97706', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }}>
+                            {status.isDownloaded && !status.hasUpdate && !status.isDownloading && (
+                                <span style={{ color: '#10b981', fontSize: '13px' }}>💾 Сохранен локально</span>
+                            )}
+
+                            {status.isDownloaded && status.hasUpdate && isOnline && !status.isDownloading && (
+                                <button onClick={handleUpdate} style={{ padding: '6px 12px', backgroundColor: '#d97706', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }}>
                                     🔄 Обновить
                                 </button>
                             )}
 
-                            {/* Если скачан (можно удалить) */}
-                            {compilerStatus.isDownloaded && !compilerStatus.isDownloading && (
-                                <>
-                  <span style={{ color: '#10b981', fontSize: '13px', display: 'flex', alignItems: 'center' }}>
-                    💾 Доступен офлайн
-                  </span>
-                                    <button onClick={handleDelete} title="Удалить с устройства" style={{ padding: '6px', backgroundColor: 'transparent', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '4px', cursor: 'pointer' }}>
-                                        🗑️
-                                    </button>
-                                </>
+                            {status.isDownloaded && !status.isDownloading && (
+                                <button onClick={handleDelete} title="Удалить" style={{ padding: '5px', background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
                             )}
                         </div>
                     )}
@@ -183,9 +159,7 @@ export default function Workspace({ roomId, isOnline }) {
                     language={COMPILERS[currentLang].monacoLang}
                     onEditorReady={(editor) => {
                         editorInstanceRef.current = editor;
-                        if (editor.getValue() === '') {
-                            editor.setValue(COMPILERS[currentLang].template);
-                        }
+                        if (editor.getValue() === '') editor.setValue(COMPILERS[currentLang].template);
                     }}
                 />
             </section>
