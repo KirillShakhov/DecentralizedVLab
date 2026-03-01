@@ -53,6 +53,9 @@ self.addEventListener('message', (event) => {
 
 // 2. СТРОГИЙ ПЕРЕХВАТЧИК ЗАПРОСОВ
 self.addEventListener('fetch', (event) => {
+    // ПРОПУСКАЕМ HEAD-запросы напрямую на сервер (они нужны для проверки обновлений)
+    if (event.request.method === 'HEAD') return;
+
     const url = new URL(event.request.url);
 
     // Логика для компиляторов (как мы делали раньше)

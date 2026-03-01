@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/Header/Header';
 import Workspace from './components/Workspace/Workspace';
 
-// Импорты MUI
 import { AppBar, Toolbar, Box, Button, Chip, IconButton, Tooltip } from '@mui/material';
 import InstallDesktopIcon from '@mui/icons-material/InstallDesktop';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
@@ -10,17 +9,19 @@ import CloudDoneIcon from '@mui/icons-material/CloudDone';
 import DeleteIcon from '@mui/icons-material/Delete';
 import WifiIcon from '@mui/icons-material/Wifi';
 import WifiOffIcon from '@mui/icons-material/WifiOff';
+import SyncIcon from '@mui/icons-material/Sync';
 
 function App() {
     const [roomId] = useState('lab-task-001');
-    const [isOnline, setIsOnline] = useState(true);
+    const [isOnline, setIsOnline] = useState(false);
 
     // Состояния для оболочки
     const [installPrompt, setInstallPrompt] = useState(null);
     const [isLabCached, setIsLabCached] = useState(false);
     const [isLabDownloading, setIsLabDownloading] = useState(false);
+    const [hasLabUpdate, setHasLabUpdate] = useState(false);
 
-    // 1. Проверка доступности сервера
+    // 1. Проверка доступности сервера и обновлений оболочки
     useEffect(() => {
         const checkServerStatus = async () => {
             if (!navigator.onLine) {
@@ -34,10 +35,43 @@ function App() {
                 setIsOnline(false);
             }
         };
+
+        const checkLabUpdate = async () => {
+            try {
+                const cache = await caches.open('lab-core-cache');
+                const cachedRes = await cache.match('/index.html');
+                if (!cachedRes) return;
+
+                // Запрашиваем заголовки свежего файла с сервера
+                const netRes = await fetch('/index.html', { method: 'HEAD', cache: 'no-store' });
+
+                // Сравниваем ETag (уникальный хэш файла) или дату изменения
+                const cachedEtag = cachedRes.headers.get('etag');
+                const netEtag = netRes.headers.get('etag');
+                const cachedDate = cachedRes.headers.get('last-modified');
+                const netDate = netRes.headers.get('last-modified');
+
+                if ((cachedEtag && netEtag && cachedEtag !== netEtag) ||
+                    (cachedDate && netDate && cachedDate !== netDate)) {
+                    setHasLabUpdate(true);
+                } else {
+                    setHasLabUpdate(false);
+                }
+            } catch (e) {
+                // Игнорируем ошибки сети
+            }
+        };
+
         checkServerStatus();
-        const interval = setInterval(checkServerStatus, 5000);
+        if (isOnline && isLabCached) checkLabUpdate();
+
+        const interval = setInterval(() => {
+            checkServerStatus();
+            if (isOnline && isLabCached) checkLabUpdate();
+        }, 15000); // Проверяем каждые 15 секунд
+
         return () => clearInterval(interval);
-    }, []);
+    }, [isOnline, isLabCached]);
 
     // 2. Проверка кэша и установка PWA
     useEffect(() => {
@@ -53,6 +87,12 @@ function App() {
             if (event.data && event.data.type === 'LAB_CACHED_SUCCESS') {
                 setIsLabCached(true);
                 setIsLabDownloading(false);
+
+                // Если мы обновляли лабу, перезагружаем страницу, чтобы применить новые скрипты
+                setHasLabUpdate(prev => {
+                    if (prev) window.location.reload();
+                    return false;
+                });
             }
             if (event.data && event.data.type === 'LAB_CACHED_ERROR') {
                 alert(`Ошибка скачивания: ${event.data.error}`);
@@ -83,17 +123,26 @@ function App() {
         }
     };
 
+    const handleUpdateLabCore = async () => {
+        setIsLabDownloading(true);
+        // Удаляем старый кэш и сразу скачиваем новый
+        await caches.delete('lab-core-cache');
+        if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'CACHE_LAB' });
+        }
+    };
+
     const handleDeleteLabCore = async () => {
         if (window.confirm("Удалить интерфейс лаборатории из устройства?")) {
             await caches.delete('lab-core-cache');
             setIsLabCached(false);
+            setHasLabUpdate(false);
         }
     };
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', p: 3, gap: 3 }}>
 
-            {/* КРАСИВАЯ ШАПКА MUI */}
             <AppBar position="static" color="default" elevation={1} sx={{ borderRadius: 2, backgroundColor: 'background.paper' }}>
                 <Toolbar sx={{ justifyContent: 'space-between' }}>
 
@@ -108,18 +157,27 @@ function App() {
                             </Button>
                         )}
 
-                        {/* 2. Скачивание интерфейса */}
+                        {/* 2. Индикатор скачивания */}
                         {isLabDownloading && (
                             <Chip label="Скачиваем..." color="primary" variant="outlined" />
                         )}
 
+                        {/* 3. Кнопка "Скачать оболочку" (если нет кэша) */}
                         {!isLabCached && !isLabDownloading && (
                             <Button variant="contained" color="primary" startIcon={<CloudDownloadIcon />} onClick={handleDownloadLabCore}>
                                 Скачать оболочку
                             </Button>
                         )}
 
-                        {isLabCached && !isLabDownloading && (
+                        {/* 4. Кнопка "Обновить оболочку" (если есть кэш и есть обнова) */}
+                        {isLabCached && hasLabUpdate && isOnline && !isLabDownloading && (
+                            <Button variant="contained" color="warning" startIcon={<SyncIcon />} onClick={handleUpdateLabCore} sx={{ animation: 'pulse 2s infinite' }}>
+                                Обновить оболочку
+                            </Button>
+                        )}
+
+                        {/* 5. Статус "Оболочка сохранена" + кнопка удаления (если актуальна) */}
+                        {isLabCached && !hasLabUpdate && !isLabDownloading && (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <Chip icon={<CloudDoneIcon />} label="Оболочка сохранена" color="success" variant="outlined" />
                                 <Tooltip title="Удалить интерфейс из кэша">
@@ -130,7 +188,7 @@ function App() {
                             </Box>
                         )}
 
-                        {/* 3. Статус сети */}
+                        {/* 6. Статус сети */}
                         <Chip
                             icon={isOnline ? <WifiIcon /> : <WifiOffIcon />}
                             label={isOnline ? 'ONLINE' : 'OFFLINE'}
@@ -140,7 +198,6 @@ function App() {
                 </Toolbar>
             </AppBar>
 
-            {/* Рабочая область */}
             <Workspace roomId={roomId} isOnline={isOnline} />
         </Box>
     );
