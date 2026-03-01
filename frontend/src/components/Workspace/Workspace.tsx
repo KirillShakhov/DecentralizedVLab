@@ -5,6 +5,7 @@ import { PythonCompiler } from '../../compilers/python';
 import { JavascriptCompiler } from '../../compilers/javascript';
 import { JavaCompiler } from '../../compilers/java';
 import { SQLiteCompiler } from '../../compilers/sqlite';
+import { LuaCompiler } from '../../compilers/lua';
 
 // Импорты MUI
 import { Box, Paper, Select, MenuItem, FormControl, InputLabel, Button, Chip, IconButton, Tooltip, CircularProgress } from '@mui/material';
@@ -17,7 +18,8 @@ const COMPILERS = {
     [PythonCompiler.id]: PythonCompiler,
     [JavaCompiler.id]: JavaCompiler,
     [JavascriptCompiler.id]: JavascriptCompiler,
-    [SQLiteCompiler.id]: SQLiteCompiler
+    [SQLiteCompiler.id]: SQLiteCompiler,
+    [LuaCompiler.id]: LuaCompiler
 };
 
 export default function Workspace({ roomId, isOnline }) {
