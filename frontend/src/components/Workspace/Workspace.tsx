@@ -8,10 +8,11 @@ import { SQLiteCompiler } from '../../compilers/sqlite';
 import { LuaCompiler } from '../../compilers/lua';
 
 // Импорты MUI
-import { Box, Paper, Select, MenuItem, FormControl, InputLabel, Button, Chip, IconButton, Tooltip, CircularProgress } from '@mui/material';
+import {
+    Box, Paper, Select, MenuItem, FormControl,
+    InputLabel, Button, Chip, Typography, CircularProgress
+} from '@mui/material';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
-import SyncIcon from '@mui/icons-material/Sync';
-import DeleteIcon from '@mui/icons-material/Delete';
 import CloudDoneIcon from '@mui/icons-material/CloudDone';
 
 const COMPILERS = {
@@ -22,51 +23,43 @@ const COMPILERS = {
     [LuaCompiler.id]: LuaCompiler
 };
 
-export default function Workspace({ roomId, isOnline }) {
-    const [currentLang, setCurrentLang] = useState(PythonCompiler.id);
-    const [output, setOutput] = useState('Выберите компилятор...');
-    const [isEngineReady, setIsEngineReady] = useState(false);
+const STORAGE_KEY = 'vlab_selected_compiler';
 
-    const [status, setStatus] = useState({
-        isDownloaded: false,
-        hasUpdate: false,
-        isDownloading: false,
-        progress: 0
-    });
+export default function Workspace({ roomId, isOnline }) {
+    const [currentLang, setCurrentLang] = useState(() => localStorage.getItem(STORAGE_KEY) || '');
+    const [output, setOutput] = useState(currentLang ? 'Восстановление...' : 'Готов к работе');
+    const [isEngineReady, setIsEngineReady] = useState(false);
+    const [status, setStatus] = useState({ isDownloaded: false, isDownloading: false, progress: 0 });
 
     const editorInstanceRef = useRef(null);
 
     const checkCurrentCompiler = async (langId) => {
+        if (!langId || !COMPILERS[langId]) return;
         if (langId === 'javascript') {
-            setStatus({ isDownloaded: true, hasUpdate: false, isDownloading: false, progress: 0 });
+            setStatus({ isDownloaded: true, isDownloading: false, progress: 0 });
             return;
         }
         const compiler = COMPILERS[langId];
         const downloaded = await compiler.isDownloaded();
-        let updateAvailable = false;
-        if (downloaded && isOnline) {
-            updateAvailable = await compiler.checkForUpdates();
-        }
-        setStatus(prev => ({ ...prev, isDownloaded: downloaded, hasUpdate: updateAvailable }));
+        setStatus(prev => ({ ...prev, isDownloaded: downloaded }));
     };
 
-    useEffect(() => {
-        checkCurrentCompiler(currentLang);
-        const interval = setInterval(() => checkCurrentCompiler(currentLang), 30000);
-        return () => clearInterval(interval);
-    }, [currentLang, isOnline]);
+    useEffect(() => { checkCurrentCompiler(currentLang); }, [currentLang]);
 
     useEffect(() => {
         const setupCompiler = async () => {
-            setIsEngineReady(false);
+            if (!currentLang || !COMPILERS[currentLang]) return;
             const compiler = COMPILERS[currentLang];
+            if (currentLang !== 'javascript' && !status.isDownloaded) return;
+
+            setIsEngineReady(false);
             try {
-                setOutput(`Инициализация движка ${compiler.name}...`);
+                setOutput(`Инициализация ${compiler.name}...`);
                 await compiler.init();
                 setIsEngineReady(true);
-                setOutput(`✅ Среда ${compiler.name} готова!`);
+                setOutput(`✅ Среда ${compiler.name} готова.`);
             } catch (err) {
-                setOutput(`⚠️ ${err.message}`);
+                setOutput(`⚠️ Ошибка: ${err.message}`);
             }
         };
         if (!status.isDownloading) setupCompiler();
@@ -75,117 +68,132 @@ export default function Workspace({ roomId, isOnline }) {
     const handleLangChange = (e) => {
         const newLang = e.target.value;
         setCurrentLang(newLang);
-        if (editorInstanceRef.current && editorInstanceRef.current.getModel()) {
-            editorInstanceRef.current.setValue(COMPILERS[newLang].template);
+        localStorage.setItem(STORAGE_KEY, newLang);
+        setIsEngineReady(false);
+        if (editorInstanceRef.current) {
+            editorInstanceRef.current.setValue(newLang ? COMPILERS[newLang].template : "");
         }
     };
 
     const handleDownload = async () => {
+        if (!currentLang) return;
         setStatus(prev => ({ ...prev, isDownloading: true, progress: 0 }));
         try {
             await COMPILERS[currentLang].downloadForOffline(p => setStatus(prev => ({ ...prev, progress: p })));
             await checkCurrentCompiler(currentLang);
-        } catch (e) {
-            alert("Ошибка скачивания.");
-        } finally {
-            setStatus(prev => ({ ...prev, isDownloading: false }));
-        }
-    };
-
-    const handleUpdate = async () => {
-        setStatus(prev => ({ ...prev, isDownloading: true, progress: 0 }));
-        try {
-            await COMPILERS[currentLang].downloadForOffline(p => setStatus(prev => ({ ...prev, progress: p })));
-            window.location.reload();
-        } catch (e) {
-            alert("Ошибка обновления.");
-            setStatus(prev => ({ ...prev, isDownloading: false }));
-        }
-    };
-
-    const handleDelete = async () => {
-        if (window.confirm("Удалить компилятор с устройства?")) {
-            await COMPILERS[currentLang].removeOffline();
-            await checkCurrentCompiler(currentLang);
-            setOutput(`🗑️ Движок удален.`);
-            setIsEngineReady(false);
-        }
+        } catch (e) { alert("Ошибка загрузки"); }
+        finally { setStatus(prev => ({ ...prev, isDownloading: false })); }
     };
 
     const runCode = async () => {
-        if (!editorInstanceRef.current) return;
-        setOutput('Выполнение...');
+        if (!editorInstanceRef.current || !currentLang) return;
+        setOutput('Запуск...');
         try {
             await COMPILERS[currentLang].run(editorInstanceRef.current.getValue(), setOutput);
-        } catch (err) {
-            setOutput(`❌ Ошибка: ${err.message}`);
-        }
+        } catch (err) { setOutput(`❌ Ошибка: ${err.message}`); }
     };
 
+    const selectedCompiler = COMPILERS[currentLang];
+
     return (
-        <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 3, flexGrow: 1 }}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Box sx={{
+            display: 'grid',
+            // 2fr 1fr — пропорции, но minWidth: 0 позволяет колонкам сжиматься
+            gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)',
+            gap: 2,
+            p: 2,
+            bgcolor: '#0a0a0a',
+            // Ограничиваем высоту строго по viewport, чтобы не было скролла страницы
+            height: 'calc(100vh - 64px)',
+            boxSizing: 'border-box',
+            overflow: 'hidden' // Запрещаем скролл самого контейнера
+        }}>
+            {/* ЛЕВАЯ ЧАСТЬ: Управление и Редактор */}
+            <Box sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+                minHeight: 0 // Важно для вложенного flex-контента
+            }}>
 
-                {/* ПАНЕЛЬ УПРАВЛЕНИЯ КОМПИЛЯТОРОМ (MUI Paper) */}
-                <Paper elevation={2} sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-
+                {/* ПАНЕЛЬ УПРАВЛЕНИЯ */}
+                <Paper sx={{
+                    p: 1.5, flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    bgcolor: '#141414', border: '1px solid #2a2a2a', borderRadius: 2
+                }}>
                     <FormControl size="small" sx={{ minWidth: 200 }}>
-                        <InputLabel>Движок</InputLabel>
-                        <Select value={currentLang} label="Движок" onChange={handleLangChange}>
+                        <InputLabel sx={{ color: '#888' }}>Язык</InputLabel>
+                        <Select
+                            value={currentLang} label="Язык" onChange={handleLangChange}
+                            sx={{ color: '#fff', '.MuiOutlinedInput-notchedOutline': { borderColor: '#333' }, bgcolor: '#1d1d1d' }}
+                        >
+                            <MenuItem value=""><em>Отключено</em></MenuItem>
                             {Object.values(COMPILERS).map(c => (
                                 <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
                             ))}
                         </Select>
                     </FormControl>
 
-                    {currentLang !== 'javascript' && (
-                        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-
-                            {status.isDownloading && (
-                                <Chip icon={<CircularProgress size={16} />} label={`Грузим... ${status.progress}%`} color="primary" variant="outlined" />
-                            )}
-
-                            {!status.isDownloaded && !status.isDownloading && (
-                                <Button variant="outlined" startIcon={<CloudDownloadIcon />} onClick={handleDownload}>
-                                    Скачать движок
-                                </Button>
-                            )}
-
-                            {status.isDownloaded && !status.hasUpdate && !status.isDownloading && (
-                                <Chip icon={<CloudDoneIcon />} label="Готов к офлайну" color="success" variant="outlined" />
-                            )}
-
-                            {status.isDownloaded && status.hasUpdate && isOnline && !status.isDownloading && (
-                                <Button variant="contained" color="warning" startIcon={<SyncIcon />} onClick={handleUpdate}>
-                                    Обновить
-                                </Button>
-                            )}
-
-                            {status.isDownloaded && !status.isDownloading && (
-                                <Tooltip title="Удалить компилятор">
-                                    <IconButton color="error" onClick={handleDelete}>
-                                        <DeleteIcon />
-                                    </IconButton>
-                                </Tooltip>
-                            )}
-                        </Box>
-                    )}
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                        {status.isDownloading && (
+                            <Chip icon={<CircularProgress size={14} color="inherit" />} label={`${status.progress}%`} color="primary" variant="outlined" />
+                        )}
+                        {currentLang && !status.isDownloaded && !status.isDownloading && (
+                            <Button variant="contained" size="small" startIcon={<CloudDownloadIcon />} onClick={handleDownload} sx={{ bgcolor: '#2e7d32' }}>
+                                Скачать
+                            </Button>
+                        )}
+                        {status.isDownloaded && currentLang !== 'javascript' && (
+                            <Chip icon={<CloudDoneIcon sx={{ color: '#4caf50 !important' }}/>} label="Offline" variant="outlined" sx={{ color: '#4caf50', borderColor: '#4caf50' }} />
+                        )}
+                    </Box>
                 </Paper>
 
-                <Paper elevation={2} sx={{ flexGrow: 1, overflow: 'hidden', p: 1 }}>
+                {/* КОНТЕЙНЕР РЕДАКТОРА */}
+                <Paper sx={{
+                    flexGrow: 1,
+                    minHeight: 0, // Позволяет редактору сжиматься внутри flex
+                    overflow: 'hidden',
+                    position: 'relative',
+                    bgcolor: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 2
+                }}>
+                    {!currentLang && (
+                        <Box sx={{
+                            position: 'absolute', zIndex: 10, inset: 0,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            bgcolor: 'rgba(10, 10, 10, 0.85)', backdropFilter: 'blur(4px)'
+                        }}>
+                            <Typography color="#888">Выберите движок для активации</Typography>
+                        </Box>
+                    )}
                     <CodeEditor
                         roomId={roomId}
-                        language={COMPILERS[currentLang].monacoLang}
+                        language={selectedCompiler?.monacoLang || 'text'}
                         onEditorReady={(editor) => {
                             editorInstanceRef.current = editor;
-                            if (editor.getValue() === '') editor.setValue(COMPILERS[currentLang].template);
+                            // Monaco требует принудительного ресайза, если контейнер изменился
+                            window.addEventListener('resize', () => editor.layout());
+                            if (currentLang && editor.getValue() === '') {
+                                editor.setValue(selectedCompiler.template);
+                            }
                         }}
                     />
                 </Paper>
             </Box>
 
-            <Paper elevation={2} sx={{ overflow: 'hidden' }}>
-                <Terminal output={output} isWasmReady={isEngineReady} onRunCode={runCode} />
+            {/* ПРАВАЯ ЧАСТЬ: Терминал */}
+            <Paper sx={{
+                minHeight: 0, // Позволяет терминалу сжиматься
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                bgcolor: '#000', border: '1px solid #2a2a2a', borderRadius: 2
+            }}>
+                <Terminal
+                    output={output}
+                    isWasmReady={isEngineReady}
+                    onRunCode={runCode}
+                />
             </Paper>
         </Box>
     );
