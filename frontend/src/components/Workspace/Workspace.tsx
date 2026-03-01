@@ -4,6 +4,7 @@ import Terminal from '../Terminal/Terminal';
 import { PythonCompiler } from '../../compilers/python';
 import { JavascriptCompiler } from '../../compilers/javascript';
 import { JavaCompiler } from '../../compilers/java';
+import { SQLiteCompiler } from '../../compilers/sqlite';
 
 // Импорты MUI
 import { Box, Paper, Select, MenuItem, FormControl, InputLabel, Button, Chip, IconButton, Tooltip, CircularProgress } from '@mui/material';
@@ -15,7 +16,8 @@ import CloudDoneIcon from '@mui/icons-material/CloudDone';
 const COMPILERS = {
     [PythonCompiler.id]: PythonCompiler,
     [JavaCompiler.id]: JavaCompiler,
-    [JavascriptCompiler.id]: JavascriptCompiler
+    [JavascriptCompiler.id]: JavascriptCompiler,
+    [SQLiteCompiler.id]: SQLiteCompiler
 };
 
 export default function Workspace({ roomId, isOnline }) {
