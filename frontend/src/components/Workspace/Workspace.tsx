@@ -3,6 +3,7 @@ import CodeEditor from '../Editor/CodeEditor';
 import Terminal from '../Terminal/Terminal';
 import { PythonCompiler } from '../../compilers/python';
 import { JavascriptCompiler } from '../../compilers/javascript';
+import { JavaCompiler } from '../../compilers/java';
 
 // Импорты MUI
 import { Box, Paper, Select, MenuItem, FormControl, InputLabel, Button, Chip, IconButton, Tooltip, CircularProgress } from '@mui/material';
@@ -13,6 +14,7 @@ import CloudDoneIcon from '@mui/icons-material/CloudDone';
 
 const COMPILERS = {
     [PythonCompiler.id]: PythonCompiler,
+    [JavaCompiler.id]: JavaCompiler,
     [JavascriptCompiler.id]: JavascriptCompiler
 };
 
