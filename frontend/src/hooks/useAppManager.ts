@@ -134,20 +134,16 @@ export function useAppManager() {
     };
 
     const handleDownloadLabCore = async () => {
-        // 1. Снимаем блокировку
         localStorage.removeItem('VLAB_WIPED_LOCK');
 
-        // 2. Если SW был убит, регистрируем его заново перед скачиванием
         if ('serviceWorker' in navigator) {
             await navigator.serviceWorker.register('/sw.js');
         }
 
-        // 3. Запускаем скачивание
         if (navigator.serviceWorker.controller) {
             setIsLabDownloading(true);
             navigator.serviceWorker.controller.postMessage({ type: 'CACHE_LAB' });
         } else {
-            // Если контроллер еще не успел перехватить управление, ждем чуть-чуть или просим обновить
             alert("Инициализация загрузчика... Нажмите кнопку скачивания еще раз через секунду.");
             window.location.reload();
         }
@@ -161,31 +157,29 @@ export function useAppManager() {
         }
     };
 
+    // ТОЛЬКО УДАЛЕНИЕ СИСТЕМЫ (Компиляторы остаются)
     const handleDeleteLabCore = async () => {
-        if (window.confirm("Удалить офлайн-систему и полностью очистить память?")) {
+        if (window.confirm("Удалить только оболочку системы (компиляторы останутся)?")) {
             try {
-                console.log("[Wipe] Начинаем полную зачистку...");
+                console.log("[Wipe] Удаление системы...");
 
-                // 1. Ставим "предохранитель" от авто-восстановления
                 localStorage.setItem('VLAB_WIPED_LOCK', 'true');
 
-                // 2. Отключаем Service Worker
                 const registrations = await navigator.serviceWorker.getRegistrations();
                 for (const reg of registrations) {
                     await reg.unregister();
                 }
 
-                // 3. Вычищаем Cache Storage (ВСЁ, кроме компиляторов)
                 const cacheNames = await caches.keys();
                 await Promise.all(cacheNames.map(name => {
+                    // Оставляем кэши компиляторов нетронутыми
                     const isCompiler = name.includes('wasm-compiler') || name.includes('pyodide') || name.includes('sql');
                     if (!isCompiler) {
-                        console.log(`[Wipe] Удаляем кэш: ${name}`);
+                        console.log(`[Wipe] Удаляем системный кэш: ${name}`);
                         return caches.delete(name);
                     }
                 }));
 
-                // 4. Вычищаем IndexedDB (Здесь Workbox прячет данные, из-за которых растет объем!)
                 if (window.indexedDB && window.indexedDB.databases) {
                     const dbs = await window.indexedDB.databases();
                     for (const db of dbs) {
@@ -196,13 +190,59 @@ export function useAppManager() {
                     }
                 }
 
-                // 5. Очищаем стейт и перезагружаем страницу (replace не оставляет историю)
                 setIsLabCached(false);
                 setHasLabUpdate(false);
                 window.location.replace('/');
-
             } catch (err) {
-                console.error("Ошибка при зачистке:", err);
+                console.error("Ошибка при удалении системы:", err);
+            }
+        }
+    };
+
+    // ПОЛНОЕ УНИЧТОЖЕНИЕ ВСЕХ ДАННЫХ (Система + Компиляторы + Настройки)
+    const handleNuclearWipe = async () => {
+        if (window.confirm("ВНИМАНИЕ: Это удалит ВООБЩЕ ВСЕ данные В-Лабы (включая оболочку и все скачанные компиляторы). Продолжить?")) {
+            try {
+                console.log("[Nuclear Wipe] Инициализация протокола полного уничтожения...");
+
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                for (const reg of registrations) {
+                    console.log(`[Nuclear Wipe] Отключение SW: ${reg.scope}`);
+                    await reg.unregister();
+                }
+
+                const cacheNames = await caches.keys();
+                await Promise.all(cacheNames.map(name => {
+                    console.log(`[Nuclear Wipe] Удаление кэша: ${name}`);
+                    return caches.delete(name); // Удаляем ВООБЩЕ ВСЁ
+                }));
+
+                if (window.indexedDB && window.indexedDB.databases) {
+                    const dbs = await window.indexedDB.databases();
+                    for (const db of dbs) {
+                        if (db.name) {
+                            console.log(`[Nuclear Wipe] Удаление БД: ${db.name}`);
+                            window.indexedDB.deleteDatabase(db.name);
+                        }
+                    }
+                }
+
+                // Очищаем локальные хранилища (настройки, код в редакторе и т.д.)
+                localStorage.clear();
+                sessionStorage.clear();
+
+                // ВАЖНО: Так как мы сделали localStorage.clear(), наш флаг блокировки тоже удалился.
+                // Ставим его заново, чтобы SW не воскрес!
+                localStorage.setItem('VLAB_WIPED_LOCK', 'true');
+
+                setIsLabCached(false);
+                setHasLabUpdate(false);
+
+                console.log("[Nuclear Wipe] Зачистка успешно завершена. Перезагрузка...");
+                window.location.replace('/');
+            } catch (err) {
+                console.error("[Nuclear Wipe] Ошибка при зачистке:", err);
+                alert("Не удалось полностью очистить память. Откройте DevTools -> Application -> Clear Site Data.");
             }
         }
     };
@@ -210,6 +250,7 @@ export function useAppManager() {
     return {
         isAppReady, isOnline, installPrompt, isLabCached,
         isLabDownloading, hasLabUpdate,
-        handleInstallApp, handleDownloadLabCore, handleUpdateLabCore, handleDeleteLabCore
+        handleInstallApp, handleDownloadLabCore, handleUpdateLabCore,
+        handleDeleteLabCore, handleNuclearWipe
     };
 }

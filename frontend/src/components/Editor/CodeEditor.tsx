@@ -3,13 +3,16 @@ import Editor from '@monaco-editor/react';
 import * as Y from 'yjs';
 import { MonacoBinding } from 'y-monaco';
 import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack';
-import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
+import { HubConnectionBuilder, LogLevel, HubConnectionState } from '@microsoft/signalr';
 import { Box } from '@mui/material';
 
 export default function CodeEditor({ roomId, language, onEditorReady }) {
     const editorRef = useRef(null);
     const ydocRef = useRef(null);
     const connectionRef = useRef(null);
+
+    // Уникальный ключ для каждой комнаты
+    const LOCAL_STORAGE_KEY = `vlab_code_${roomId}`;
 
     const handleEditorDidMount = async (editor, monaco) => {
         editorRef.current = editor;
@@ -22,11 +25,18 @@ export default function CodeEditor({ roomId, language, onEditorReady }) {
         ydocRef.current = ydoc;
         const ytext = ydoc.getText('monaco');
 
+        // 1. ЛОКАЛЬНАЯ РАЗРАБОТКА: Загружаем сохраненный код из LocalStorage
+        const savedCode = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (savedCode) {
+            ytext.insert(0, savedCode); // Инициализируем Yjs сохраненным текстом
+        }
+
         const connection = new HubConnectionBuilder()
             .withUrl('/sync-hub')
             .withAutomaticReconnect()
             .withHubProtocol(new MessagePackHubProtocol())
-            .configureLogging(LogLevel.Information)
+            // Отключаем лишний спам SignalR в консоли (оставляем только Warning и Error)
+            .configureLogging(LogLevel.Warning)
             .build();
 
         connectionRef.current = connection;
@@ -44,22 +54,39 @@ export default function CodeEditor({ roomId, language, onEditorReady }) {
             Y.applyUpdate(ydoc, update, 'signalr');
         });
 
-        try {
-            await connection.start();
-            await connection.invoke('JoinRoom', roomId);
+        // 2. УСПОКОИТЕЛЬ SIGNALR (Fail-Fast)
+        const startConnection = async () => {
+            if (!navigator.onLine) {
+                console.log('🌐 Офлайн-режим: Локальная разработка. Код сохраняется в браузере.');
+                return; // Даже не пытаемся подключиться
+            }
 
-            ydoc.on('update', (update, origin) => {
-                if (origin !== 'signalr') {
-                    connection.invoke('SendDocumentUpdate', roomId, update)
-                        .catch(err => console.error('Ошибка отправки:', err));
-                }
-            });
+            try {
+                await connection.start();
+                await connection.invoke('JoinRoom', roomId);
+                console.log('✅ SignalR подключен. Совместная работа активна.');
+            } catch (err) {
+                console.warn('⚠️ Сервер синхронизации недоступен. Переход в режим локальной разработки.');
+            }
+        };
 
-            new MonacoBinding(ytext, editorRef.current.getModel(), new Set([editorRef.current]));
+        // Запускаем подключение
+        await startConnection();
 
-        } catch (err) {
-            console.error('Ошибка инициализации:', err);
-        }
+        // 3. ПЕРЕХВАТ ИЗМЕНЕНИЙ (Сохранение + Отправка)
+        ydoc.on('update', (update, origin) => {
+            // ВСЕГДА сохраняем текущий текст в LocalStorage при любых изменениях
+            localStorage.setItem(LOCAL_STORAGE_KEY, ytext.toString());
+
+            // ОТПРАВЛЯЕМ на сервер ТОЛЬКО если это наши изменения И мы подключены
+            if (origin !== 'signalr' && connection.state === HubConnectionState.Connected) {
+                connection.invoke('SendDocumentUpdate', roomId, update)
+                    .catch(err => console.error('Ошибка отправки:', err));
+            }
+        });
+
+        // Биндим Yjs к Monaco
+        new MonacoBinding(ytext, editorRef.current.getModel(), new Set([editorRef.current]));
     };
 
     return (

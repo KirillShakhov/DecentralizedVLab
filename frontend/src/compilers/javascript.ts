@@ -3,22 +3,46 @@ export const JavascriptCompiler = {
     name: 'JavaScript (Native V8)',
     monacoLang: 'javascript',
     template: 'console.log("JS работает мгновенно!");\n',
+    CACHE_NAME: 'wasm-compiler-javascript',
 
-    async isDownloaded(): Promise<boolean> { return true; },
-    async downloadForOffline(onProgress: (p: number) => void): Promise<void> { onProgress(100); },
-    async init(): Promise<void> { },
-    async run(code: string, logOutput: (out: string) => void): Promise<void> {
-        let logs: string[] = [];
+    async isDownloaded() {
+        return await caches.has(this.CACHE_NAME);
+    },
+
+    async downloadForOffline(onProgress) {
+        if (onProgress) onProgress(50);
+        const cache = await caches.open(this.CACHE_NAME);
+        await cache.put('/v8-stub.txt', new Response('JS_READY'));
+        if (onProgress) onProgress(100);
+    },
+
+    async init() {
+        const downloaded = await this.isDownloaded();
+        if (!downloaded) {
+            console.log("[JS-Stub] Авто-кэширование нативного движка...");
+            await this.downloadForOffline();
+        }
+        // V8 уже вшит в браузер, больше ничего делать не нужно
+    },
+
+    async run(code, logOutput) {
+        let logs = [];
         const originalLog = console.log;
         console.log = (...args) => logs.push(args.join(' '));
         try {
-            new Function(code)();
-            logOutput(logs.join('\n') || 'Программа выполнена');
+            const fn = new Function(code);
+            fn();
+            logOutput(logs.join('\n') || 'Программа выполнена (логов нет)');
+        } catch (err) {
+            logOutput(`❌ Ошибка выполнения:\n${err.message}`);
         } finally {
             console.log = originalLog;
         }
     },
-    // Добавляем новые методы для консистентности интерфейса:
-    async checkForUpdates(): Promise<boolean> { return false; },
-    async removeOffline(): Promise<void> { }
+
+    async checkForUpdates() { return false; },
+
+    async removeOffline() {
+        await caches.delete(this.CACHE_NAME);
+    }
 };

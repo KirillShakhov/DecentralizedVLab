@@ -63,10 +63,6 @@ export const JavaCompiler = {
                 indexURL: '/compilers/java/'
             });
         } catch (err: any) {
-            if (err.message.includes('fetch') || err.message.includes('network') || err.message.includes('503')) {
-                alert("⚠️ ВНИМАНИЕ: Офлайн-режим для Java не активирован!\n\nПодключитесь к серверу и скачайте движок.");
-                throw new Error("Требуется загрузка JVM.");
-            }
             throw new Error(`Ошибка JVM: ${err.message}`);
         }
     },

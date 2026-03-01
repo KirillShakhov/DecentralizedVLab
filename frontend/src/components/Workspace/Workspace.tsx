@@ -39,10 +39,6 @@ export default function Workspace({ roomId, isOnline }) {
     // Синхронизация статуса компилятора
     const checkCurrentCompiler = async (langId) => {
         if (!langId || !COMPILERS[langId]) return;
-        if (langId === 'javascript') {
-            setStatus({ isDownloaded: true, isDownloading: false, progress: 0 });
-            return;
-        }
         const compiler = COMPILERS[langId];
         const downloaded = await compiler.isDownloaded();
         setStatus(prev => ({ ...prev, isDownloaded: downloaded }));
@@ -55,27 +51,42 @@ export default function Workspace({ roomId, isOnline }) {
         const setupCompiler = async () => {
             if (!currentLang || !COMPILERS[currentLang]) return;
             const compiler = COMPILERS[currentLang];
-            if (currentLang !== 'javascript' && !status.isDownloaded) return;
 
+            // 1. ЖЕСТКАЯ БЛОКИРОВКА (Используем проп isOnline, а не navigator!)
+            const downloaded = await compiler.isDownloaded();
+
+            // Если сервер недоступен (isOnline === false) и нет файлов в кэше:
+            if (!isOnline && !downloaded) {
+                setIsEngineReady(false);
+                setOutput(`⚠️ ОФЛАЙН РЕЖИМ:\nДвижок "${compiler.name}" не загружен в память.\nПожалуйста, дождитесь подключения к серверу и скачайте движок.`);
+                return; // ВЫХОДИМ! Никаких попыток загрузить wasm-файлы.
+            }
+
+            // 2. СТАНДАРТНАЯ ИНИЦИАЛИЗАЦИЯ
             setIsEngineReady(false);
             try {
+                if (isOnline && !status.isDownloaded) {
+                    setOutput(`⏳ Загрузка движка ${compiler.name} из сети...`);
+                }
+
                 await compiler.init();
                 setIsEngineReady(true);
                 setOutput(`✅ Движок ${compiler.name} готов к работе.`);
             } catch (err) {
-                setOutput(`⚠️ Ошибка: ${err.message}`);
+                setOutput(`❌ Ошибка инициализации:\n${err.message}`);
             }
         };
-        if (!status.isDownloading) setupCompiler();
-    }, [currentLang, status.isDownloaded, status.isDownloading]);
+
+        if (!status.isDownloading) {
+            setupCompiler();
+        }
+    }, [currentLang, status.isDownloaded, status.isDownloading, isOnline]);
 
     const handleLangChange = (e) => {
         const newLang = e.target.value;
         setCurrentLang(newLang);
         localStorage.setItem(STORAGE_KEY, newLang);
         setIsEngineReady(false);
-        // ВАЖНО: Мы НЕ меняем текст в редакторе при смене языка, 
-        // чтобы не перетереть код других участников.
     };
 
     // НОВАЯ ФУНКЦИЯ: Очистка и установка примера кода
@@ -101,10 +112,19 @@ export default function Workspace({ roomId, isOnline }) {
 
     const runCode = async () => {
         if (!editorInstanceRef.current || !currentLang) return;
+
+        // Если движок не готов (заблокирован из-за офлайна или еще грузится)
+        if (!isEngineReady) {
+            setOutput(`❌ Выполнение невозможно:\nДвижок не готов или недоступен в офлайн-режиме.`);
+            return;
+        }
+
         setOutput('Выполнение...');
         try {
             await COMPILERS[currentLang].run(editorInstanceRef.current.getValue(), setOutput);
-        } catch (err) { setOutput(`❌ Ошибка: ${err.message}`); }
+        } catch (err) {
+            setOutput(`❌ Ошибка выполнения:\n${err.message}`);
+        }
     };
 
     const selectedCompiler = COMPILERS[currentLang];
@@ -159,7 +179,7 @@ export default function Workspace({ roomId, isOnline }) {
                                 Скачать движок
                             </Button>
                         )}
-                        {status.isDownloaded && currentLang !== 'javascript' && (
+                        {status.isDownloaded && (
                             <Chip icon={<CloudDoneIcon sx={{ color: '#4caf50 !important' }}/>} label="Offline" variant="outlined" sx={{ color: '#4caf50', borderColor: '#4caf50' }} />
                         )}
                     </Box>

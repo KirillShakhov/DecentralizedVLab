@@ -61,7 +61,7 @@ function App() {
                     {/* Новая страница настроек хранилища */}
                     <Route
                         path="/settings"
-                        element={<Settings />}
+                        element={<Settings appManager={appManager} />}
                     />
 
                     {/* Редирект для несуществующих страниц */}
