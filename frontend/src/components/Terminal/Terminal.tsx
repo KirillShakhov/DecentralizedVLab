@@ -1,29 +1,48 @@
 import React from 'react';
+import { Box, Typography, Button } from '@mui/material';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 
 export default function Terminal({ output, isWasmReady, onRunCode }) {
     return (
-        <section style={{ backgroundColor: '#1e1e1e', borderRadius: '8px', padding: '15px', border: '1px solid #333', display: 'flex', flexDirection: 'column' }}>
-            <h3>Консоль (WASM Edge)</h3>
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', p: 2 }}>
+            <Typography variant="subtitle1" fontWeight="bold" color="text.secondary" gutterBottom>
+                Консоль (WASM Edge)
+            </Typography>
 
-            <div style={{ flex: 1, backgroundColor: '#000', color: '#0f0', padding: '10px', borderRadius: '5px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', overflowY: 'auto', marginBottom: '15px' }}>
-                {output}
-            </div>
-
-            <button
-                onClick={onRunCode}
-                disabled={!isWasmReady}
-                style={{
-                    padding: '12px 15px',
-                    backgroundColor: isWasmReady ? '#007acc' : '#444',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: isWasmReady ? 'pointer' : 'not-allowed',
-                    fontWeight: 'bold'
+            <Box
+                sx={{
+                    flexGrow: 1,
+                    bgcolor: '#000',
+                    color: '#0f0', // Классический зеленый терминал
+                    p: 1.5,
+                    borderRadius: 1,
+                    fontFamily: '"Fira Code", monospace',
+                    whiteSpace: 'pre-wrap',
+                    overflowY: 'auto',
+                    mb: 2,
+                    border: '1px solid #333'
                 }}
             >
-                {isWasmReady ? '▶ Запустить локально (WASM)' : 'Загрузка рантайма...'}
-            </button>
-        </section>
+                {output}
+            </Box>
+
+            <Button
+                variant="contained"
+                color={isWasmReady ? "primary" : "inherit"}
+                disabled={!isWasmReady}
+                onClick={onRunCode}
+                startIcon={isWasmReady ? <PlayArrowIcon /> : <HourglassEmptyIcon />}
+                fullWidth
+                sx={{
+                    py: 1.5,
+                    fontWeight: 'bold',
+                    textTransform: 'none',
+                    fontSize: '1rem'
+                }}
+            >
+                {isWasmReady ? 'Запустить локально (WASM)' : 'Загрузка рантайма...'}
+            </Button>
+        </Box>
     );
 }

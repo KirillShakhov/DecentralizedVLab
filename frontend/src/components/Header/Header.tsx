@@ -1,10 +1,15 @@
 import React from 'react';
+import { Box, Typography } from '@mui/material';
 
 export default function Header({ roomId }) {
     return (
-        <header style={{ marginBottom: '20px', borderBottom: '1px solid #333', paddingBottom: '10px' }}>
-            <h1>Децентрализованная В-Лаборатория</h1>
-            <p style={{ color: '#888' }}>Режим: Совместное программирование | Комната: {roomId}</p>
-        </header>
+        <Box>
+            <Typography variant="h6" component="h1" fontWeight="bold" color="text.primary">
+                Децентрализованная В-Лаборатория
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+                Режим: Совместное программирование | Комната: {roomId}
+            </Typography>
+        </Box>
     );
 }

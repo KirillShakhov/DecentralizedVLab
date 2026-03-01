@@ -4,6 +4,13 @@ import Terminal from '../Terminal/Terminal';
 import { PythonCompiler } from '../../compilers/python';
 import { JavascriptCompiler } from '../../compilers/javascript';
 
+// Импорты MUI
+import { Box, Paper, Select, MenuItem, FormControl, InputLabel, Button, Chip, IconButton, Tooltip, CircularProgress } from '@mui/material';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
+import SyncIcon from '@mui/icons-material/Sync';
+import DeleteIcon from '@mui/icons-material/Delete';
+import CloudDoneIcon from '@mui/icons-material/CloudDone';
+
 const COMPILERS = {
     [PythonCompiler.id]: PythonCompiler,
     [JavascriptCompiler.id]: JavascriptCompiler
@@ -14,7 +21,6 @@ export default function Workspace({ roomId, isOnline }) {
     const [output, setOutput] = useState('Выберите компилятор...');
     const [isEngineReady, setIsEngineReady] = useState(false);
 
-    // Состояния текущего компилятора
     const [status, setStatus] = useState({
         isDownloaded: false,
         hasUpdate: false,
@@ -29,15 +35,12 @@ export default function Workspace({ roomId, isOnline }) {
             setStatus({ isDownloaded: true, hasUpdate: false, isDownloading: false, progress: 0 });
             return;
         }
-
         const compiler = COMPILERS[langId];
         const downloaded = await compiler.isDownloaded();
         let updateAvailable = false;
-
         if (downloaded && isOnline) {
             updateAvailable = await compiler.checkForUpdates();
         }
-
         setStatus(prev => ({ ...prev, isDownloaded: downloaded, hasUpdate: updateAvailable }));
     };
 
@@ -51,7 +54,6 @@ export default function Workspace({ roomId, isOnline }) {
         const setupCompiler = async () => {
             setIsEngineReady(false);
             const compiler = COMPILERS[currentLang];
-
             try {
                 setOutput(`Инициализация движка ${compiler.name}...`);
                 await compiler.init();
@@ -61,7 +63,6 @@ export default function Workspace({ roomId, isOnline }) {
                 setOutput(`⚠️ ${err.message}`);
             }
         };
-
         if (!status.isDownloading) setupCompiler();
     }, [currentLang, status.isDownloaded, status.isDownloading]);
 
@@ -116,55 +117,70 @@ export default function Workspace({ roomId, isOnline }) {
     };
 
     return (
-        <main style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
-            <section style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 3, flexGrow: 1 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
 
-                {/* ПАНЕЛЬ УПРАВЛЕНИЯ КОМПИЛЯТОРОМ */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1e1e1e', padding: '10px', borderRadius: '8px', border: '1px solid #333' }}>
-                    <div>
-                        <select value={currentLang} onChange={handleLangChange} style={{ padding: '8px', borderRadius: '4px', backgroundColor: '#333', color: 'white', border: '1px solid #555' }}>
-                            {Object.values(COMPILERS).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                    </div>
+                {/* ПАНЕЛЬ УПРАВЛЕНИЯ КОМПИЛЯТОРОМ (MUI Paper) */}
+                <Paper elevation={2} sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+
+                    <FormControl size="small" sx={{ minWidth: 200 }}>
+                        <InputLabel>Движок</InputLabel>
+                        <Select value={currentLang} label="Движок" onChange={handleLangChange}>
+                            {Object.values(COMPILERS).map(c => (
+                                <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
 
                     {currentLang !== 'javascript' && (
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                            {status.isDownloading && <span style={{ color: '#3b82f6', fontSize: '13px' }}>Грузим... {status.progress}%</span>}
+                        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+
+                            {status.isDownloading && (
+                                <Chip icon={<CircularProgress size={16} />} label={`Грузим... ${status.progress}%`} color="primary" variant="outlined" />
+                            )}
 
                             {!status.isDownloaded && !status.isDownloading && (
-                                <button onClick={handleDownload} style={{ padding: '6px 12px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }}>
-                                    ⬇️ Скачать компилятор
-                                </button>
+                                <Button variant="outlined" startIcon={<CloudDownloadIcon />} onClick={handleDownload}>
+                                    Скачать движок
+                                </Button>
                             )}
 
                             {status.isDownloaded && !status.hasUpdate && !status.isDownloading && (
-                                <span style={{ color: '#10b981', fontSize: '13px' }}>💾 Сохранен локально</span>
+                                <Chip icon={<CloudDoneIcon />} label="Готов к офлайну" color="success" variant="outlined" />
                             )}
 
                             {status.isDownloaded && status.hasUpdate && isOnline && !status.isDownloading && (
-                                <button onClick={handleUpdate} style={{ padding: '6px 12px', backgroundColor: '#d97706', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }}>
-                                    🔄 Обновить
-                                </button>
+                                <Button variant="contained" color="warning" startIcon={<SyncIcon />} onClick={handleUpdate}>
+                                    Обновить
+                                </Button>
                             )}
 
                             {status.isDownloaded && !status.isDownloading && (
-                                <button onClick={handleDelete} title="Удалить" style={{ padding: '5px', background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
+                                <Tooltip title="Удалить компилятор">
+                                    <IconButton color="error" onClick={handleDelete}>
+                                        <DeleteIcon />
+                                    </IconButton>
+                                </Tooltip>
                             )}
-                        </div>
+                        </Box>
                     )}
-                </div>
+                </Paper>
 
-                <CodeEditor
-                    roomId={roomId}
-                    language={COMPILERS[currentLang].monacoLang}
-                    onEditorReady={(editor) => {
-                        editorInstanceRef.current = editor;
-                        if (editor.getValue() === '') editor.setValue(COMPILERS[currentLang].template);
-                    }}
-                />
-            </section>
+                <Paper elevation={2} sx={{ flexGrow: 1, overflow: 'hidden', p: 1 }}>
+                    <CodeEditor
+                        roomId={roomId}
+                        language={COMPILERS[currentLang].monacoLang}
+                        onEditorReady={(editor) => {
+                            editorInstanceRef.current = editor;
+                            if (editor.getValue() === '') editor.setValue(COMPILERS[currentLang].template);
+                        }}
+                    />
+                </Paper>
+            </Box>
 
-            <Terminal output={output} isWasmReady={isEngineReady} onRunCode={runCode} />
-        </main>
+            <Paper elevation={2} sx={{ overflow: 'hidden' }}>
+                <Terminal output={output} isWasmReady={isEngineReady} onRunCode={runCode} />
+            </Paper>
+        </Box>
     );
 }

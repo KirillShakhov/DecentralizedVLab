@@ -4,7 +4,7 @@ import * as Y from 'yjs';
 import { MonacoBinding } from 'y-monaco';
 import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack';
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
-
+import { Box } from '@mui/material';
 
 export default function CodeEditor({ roomId, language, onEditorReady }) {
     const editorRef = useRef(null);
@@ -63,14 +63,19 @@ export default function CodeEditor({ roomId, language, onEditorReady }) {
     };
 
     return (
-        <div style={{ border: '1px solid #333', borderRadius: '8px', overflow: 'hidden' }}>
+        <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden', height: '100%' }}>
             <Editor
                 height="60vh"
                 theme="vs-dark"
                 language={language}
                 onMount={handleEditorDidMount}
-                options={{ minimap: { enabled: false }, fontSize: 16 }}
+                options={{
+                    minimap: { enabled: false },
+                    fontSize: 16,
+                    padding: { top: 16 },
+                    scrollBeyondLastLine: false
+                }}
             />
-        </div>
+        </Box>
     );
 }
