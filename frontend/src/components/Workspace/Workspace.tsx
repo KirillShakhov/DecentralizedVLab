@@ -75,6 +75,11 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
   // Синхронизируем вкладки с fileList
   useEffect(() => {
     if (fileList.length === 0) return;
+
+    if (!activeFile || !fileList.includes(activeFile)) {
+      setActiveFile(fileList[0]);
+    }
+
     setOpenFiles(prev => {
       const valid = prev.filter(p => fileList.includes(p));
       const merged = (valid.includes(activeFile) || !activeFile)

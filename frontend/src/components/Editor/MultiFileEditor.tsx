@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react'
-import Editor, { useMonaco } from '@monaco-editor/react'
+import Editor from '@monaco-editor/react'
 import * as Y from 'yjs'
 import { MonacoBinding } from 'y-monaco'
 import { Box, IconButton } from '@mui/material'
@@ -33,13 +33,14 @@ export default function MultiFileEditor({
   yfiles, activeFile, openFiles, onCloseTab, onSwitchTab,
 }: Props) {
   const [filesVersion, setFilesVersion] = useState(0)
+  const resolvedActiveFile = activeFile || openFiles[0] || ''
   const editorRef = useRef<any>(null)
+  const monacoRef = useRef<any>(null)
   // Кэш Monaco моделей: path → ITextModel
   const modelsRef = useRef<Map<string, any>>(new Map())
   // Держим только один активный биндинг для текущего файла
   const activeBindingRef = useRef<MonacoBinding | null>(null)
   const activeBindingPathRef = useRef<string>('')
-  const monaco = useMonaco()
 
   const disposeActiveBinding = useCallback(() => {
     if (activeBindingRef.current) {
@@ -100,14 +101,39 @@ export default function MultiFileEditor({
     disposeActiveBinding()
     activeBindingRef.current = new MonacoBinding(ytext, model, new Set([editor]))
     activeBindingPathRef.current = filePath
+
+    // Жестко синхронизируем видимую модель из Y.Text сразу после bind.
+    // Это устраняет редкий стартовый race, когда редактор визуально пуст до первого tab switch.
+    const syncedValue = ytext.toString()
+    if (model.getValue() !== syncedValue) {
+      model.setValue(syncedValue)
+    }
   }, [yfiles, disposeActiveBinding])
 
   // Когда activeFile меняется — переключаем модель
   useEffect(() => {
-    if (editorRef.current && monaco && activeFile) {
-      openInEditor(editorRef.current, monaco, activeFile)
+    if (editorRef.current && monacoRef.current && resolvedActiveFile) {
+      openInEditor(editorRef.current, monacoRef.current, resolvedActiveFile)
+
+      // Monaco wrapper иногда перезаписывает модель в следующий кадр после mount/update.
+      // Повторная установка фиксирует стартовый кейс "пусто до переключения вкладки".
+      const rafId = window.requestAnimationFrame(() => {
+        if (editorRef.current && monacoRef.current) {
+          openInEditor(editorRef.current, monacoRef.current, resolvedActiveFile)
+          editorRef.current.layout?.()
+        }
+      })
+
+      return () => window.cancelAnimationFrame(rafId)
     }
-  }, [activeFile, monaco, filesVersion, openInEditor])
+  }, [resolvedActiveFile, filesVersion, openInEditor])
+
+  // Если родитель ещё не выбрал активный файл, выбираем первую открытую вкладку
+  useEffect(() => {
+    if (!activeFile && openFiles.length > 0) {
+      onSwitchTab(openFiles[0])
+    }
+  }, [activeFile, openFiles, onSwitchTab])
 
   // Очищаем биндинги удалённых файлов
   useEffect(() => {
@@ -125,7 +151,8 @@ export default function MultiFileEditor({
 
   const handleMount = (editor: any, monacoInstance: any) => {
     editorRef.current = editor
-    if (activeFile) openInEditor(editor, monacoInstance, activeFile)
+    monacoRef.current = monacoInstance
+    if (resolvedActiveFile) openInEditor(editor, monacoInstance, resolvedActiveFile)
   }
 
   // Cleanup при unmount
@@ -146,7 +173,7 @@ export default function MultiFileEditor({
         flexShrink: 0,
       }}>
         {openFiles.map(path => {
-          const isActive = path === activeFile
+          const isActive = path === resolvedActiveFile
           return (
             <Box
               key={path}
@@ -196,6 +223,9 @@ export default function MultiFileEditor({
       {/* Monaco Editor */}
       <Box sx={{ flexGrow: 1, minHeight: 0 }}>
         <Editor
+          path={resolvedActiveFile || 'untitled://empty'}
+          language={resolvedActiveFile ? monacoLang(resolvedActiveFile) : 'plaintext'}
+          defaultValue={resolvedActiveFile ? (yfiles.get(resolvedActiveFile)?.toString() ?? '') : ''}
           height="100%"
           theme="vs-dark"
           onMount={handleMount}
