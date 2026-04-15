@@ -11,11 +11,9 @@ import CodeIcon from '@mui/icons-material/Code'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import FileUploadIcon from '@mui/icons-material/FileUpload'
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import type { Course, User } from '../types'
 import { useCourseStore, useRecentSessions } from '../hooks/useCourseStore'
 import { courseDB } from '../db'
-import { demoCourse } from '../data/demoCourse'
 
 const LANG_LABELS: Record<string, string> = {
   python: 'Python', javascript: 'JavaScript', lua: 'Lua', sqlite: 'SQLite', java: 'Java',
@@ -66,19 +64,6 @@ export default function HomePage({ user }: Props) {
     } catch (err: any) {
       setSnackbar(`Ошибка импорта: ${err.message}`)
     }
-  }
-
-  const handleLoadDemo = async () => {
-    const existing = await courseDB.get(demoCourse.id)
-    const course: Course = {
-      ...demoCourse,
-      id: existing ? crypto.randomUUID() : demoCourse.id,
-      authorId: user.id,
-      authorName: user.username,
-    }
-    await courseDB.save(course)
-    await reload()
-    setSnackbar('Демо-курс загружен!')
   }
 
   return (
@@ -137,15 +122,14 @@ export default function HomePage({ user }: Props) {
             <Typography color="text.secondary" sx={{ mb: 2 }}>У вас ещё нет курсов</Typography>
             <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', flexWrap: 'wrap' }}>
               <Button
-                variant="contained"
-                startIcon={<AutoAwesomeIcon />}
-                onClick={handleLoadDemo}
-                sx={{ bgcolor: '#1565c0' }}
+                variant="outlined"
+                startIcon={<FileUploadIcon />}
+                onClick={handleImportClick}
               >
-                Загрузить демо-курс
+                Импортировать курс
               </Button>
               <Button
-                variant="outlined"
+                variant="contained"
                 startIcon={<AddIcon />}
                 onClick={() => navigate('/courses/new')}
               >
