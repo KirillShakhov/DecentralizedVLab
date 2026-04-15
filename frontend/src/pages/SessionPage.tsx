@@ -67,6 +67,7 @@ export default function SessionPage({ user, isOnline }: Props) {
       roomId={sessionId}
       isOnline={isOnline}
       lab={lab}
+      user={user}
     />
   )
 }

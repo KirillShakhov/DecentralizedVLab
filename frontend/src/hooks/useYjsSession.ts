@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import * as Y from 'yjs'
 import { HubConnectionBuilder, LogLevel, HubConnectionState } from '@microsoft/signalr'
 import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack'
+import type { User, Participant } from '../types'
 
 // ─── Утилиты localStorage ────────────────────────────────────────────────────
 
@@ -24,12 +25,14 @@ export function useYjsSession(
   roomId: string,
   isOnline: boolean,
   initialFiles: Record<string, string>,
+  currentUser?: User | null,
 ) {
   // Y.Doc создаётся один раз за жизнь компонента
   const ydocRef = useRef<Y.Doc | null>(null)
   const connectionRef = useRef<any>(null)
   const [fileList, setFileList] = useState<string[]>([])
   const [activeFile, setActiveFile] = useState<string>('')
+  const [participants, setParticipants] = useState<Participant[]>([])
 
   // Ленивая инициализация Y.Doc (до первого рендера)
   if (!ydocRef.current) {
@@ -61,6 +64,39 @@ export function useYjsSession(
 
   const ydoc = ydocRef.current!
   const yfiles = ydoc.getMap<Y.Text>('files')
+  const ypresence = ydoc.getMap<any>('presence')
+
+  // ── Presence: вписываем себя при монтировании, удаляем при размонтировании ─
+
+  useEffect(() => {
+    if (!currentUser) return
+    ypresence.set(currentUser.id, {
+      username: currentUser.username,
+      color: currentUser.color,
+      role: 'student' as const,
+    })
+    return () => { ypresence.delete(currentUser.id) }
+  }, [currentUser?.id])
+
+  // ── Реактивный список участников ─────────────────────────────────────────
+
+  useEffect(() => {
+    const sync = () => {
+      const list: Participant[] = []
+      ypresence.forEach((data: any, userId: string) => {
+        list.push({
+          userId,
+          username: data.username ?? 'Аноним',
+          role: data.role ?? 'student',
+          color: data.color ?? '#666',
+        })
+      })
+      setParticipants(list)
+    }
+    sync()
+    ypresence.observe(sync)
+    return () => ypresence.unobserve(sync)
+  }, [])
 
   // ── Реактивный список файлов ──────────────────────────────────────────────
 
@@ -192,5 +228,6 @@ export function useYjsSession(
     deleteFile,
     renameFile,
     getFiles,
+    participants,
   }
 }
