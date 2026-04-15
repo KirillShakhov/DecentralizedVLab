@@ -1,9 +1,8 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import Header from '../Header/Header';
 import {
     AppBar, Toolbar, Box, Button, Chip, IconButton,
-    Tooltip, Divider
+    Tooltip, Divider, Avatar, Typography,
 } from '@mui/material';
 import InstallDesktopIcon from '@mui/icons-material/InstallDesktop';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
@@ -11,20 +10,27 @@ import CloudDoneIcon from '@mui/icons-material/CloudDone';
 import CloudOffIcon from '@mui/icons-material/CloudOff';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SettingsIcon from '@mui/icons-material/Settings';
-import StorageIcon from '@mui/icons-material/Storage';
-import CodeIcon from '@mui/icons-material/Code';
+import HomeIcon from '@mui/icons-material/Home';
 import SyncIcon from '@mui/icons-material/Sync';
+import type { User } from '../../types';
 
-export default function TopBar({ roomId, appManager }) {
+interface Props {
+    appManager: any;
+    user?: User | null;
+}
+
+export default function TopBar({ appManager, user }: Props) {
     const navigate = useNavigate();
     const location = useLocation();
 
     const {
         isOnline, installPrompt, isLabCached, isLabDownloading, hasLabUpdate,
-        handleInstallApp, handleDownloadLabCore, handleUpdateLabCore, handleDeleteLabCore
+        handleInstallApp, handleDownloadLabCore, handleUpdateLabCore, handleDeleteLabCore,
     } = appManager;
 
     const isSettingsPage = location.pathname === '/settings';
+    const isHomePage = location.pathname === '/';
+    const isSession = location.pathname.startsWith('/session/');
 
     return (
         <AppBar
@@ -33,16 +39,43 @@ export default function TopBar({ roomId, appManager }) {
             sx={{
                 bgcolor: '#141414',
                 borderBottom: '1px solid #2a2a2a',
-                zIndex: (theme) => theme.zIndex.drawer + 1
+                zIndex: (theme) => theme.zIndex.drawer + 1,
             }}
         >
             <Toolbar sx={{ justifyContent: 'space-between', minHeight: 64 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Header roomId={roomId} />
+
+                {/* ЛЕВАЯ ЧАСТЬ: Лого + навигация */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography
+                        variant="h6"
+                        fontWeight="bold"
+                        sx={{
+                            cursor: 'pointer', color: '#fff',
+                            '&:hover': { color: '#90caf9' },
+                            userSelect: 'none',
+                        }}
+                        onClick={() => navigate('/')}
+                    >
+                        В-Лаба
+                    </Typography>
+
+                    {!isHomePage && (
+                        <Tooltip title="Главная">
+                            <IconButton
+                                size="small"
+                                onClick={() => navigate('/')}
+                                sx={{ color: '#666', '&:hover': { color: '#fff' } }}
+                            >
+                                <HomeIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
+                    )}
                 </Box>
 
+                {/* ПРАВАЯ ЧАСТЬ: Статусы + управление */}
                 <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-                    {/* УПРАВЛЕНИЕ ОБОЛОЧКОЙ (CORE) */}
+
+                    {/* Управление оболочкой */}
                     {isLabDownloading && (
                         <Chip label="Загрузка ядра..." size="small" color="primary" variant="outlined" />
                     )}
@@ -55,7 +88,7 @@ export default function TopBar({ roomId, appManager }) {
                             onClick={handleDownloadLabCore}
                             sx={{ bgcolor: '#1976d2' }}
                         >
-                            Скачать оболочку
+                            Скачать оффлайн
                         </Button>
                     )}
 
@@ -74,58 +107,68 @@ export default function TopBar({ roomId, appManager }) {
                             ) : (
                                 <Chip
                                     icon={<CloudDoneIcon />}
-                                    label="Оболочка сохранена"
+                                    label="Offline"
                                     size="small"
                                     variant="outlined"
                                     sx={{ color: '#4caf50', borderColor: '#4caf50' }}
                                 />
                             )}
-
-                            {/* КНОПКА УДАЛЕНИЯ КЭША ЯДРА */}
-                            <Tooltip title="Удалить интерфейс из кэша">
-                                <IconButton
-                                    color="error"
-                                    onClick={handleDeleteLabCore}
-                                    size="small"
-                                >
+                            <Tooltip title="Удалить из кэша">
+                                <IconButton color="error" onClick={handleDeleteLabCore} size="small">
                                     <DeleteIcon fontSize="small" />
                                 </IconButton>
                             </Tooltip>
                         </Box>
                     )}
 
-                    <Divider orientation="vertical" flexItem sx={{ bgcolor: '#333', mx: 1 }} />
+                    <Divider orientation="vertical" flexItem sx={{ bgcolor: '#333', mx: 0.5 }} />
 
-                    {/* СТАТУС СЕТИ */}
+                    {/* Статус сети */}
                     <Chip
                         icon={isOnline ? <CloudDoneIcon /> : <CloudOffIcon />}
-                        label={isOnline ? 'ONLINE' : 'OFFLINE'}
+                        label={isOnline ? 'Online' : 'Offline'}
                         size="small"
                         sx={{
-                            bgcolor: isOnline ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 152, 0, 0.1)',
+                            bgcolor: isOnline ? 'rgba(76,175,80,0.1)' : 'rgba(255,152,0,0.1)',
                             color: isOnline ? '#4caf50' : '#ff9800',
                             border: `1px solid ${isOnline ? '#4caf50' : '#ff9800'}`,
-                            fontWeight: 'bold'
+                            fontWeight: 'bold',
                         }}
                     />
 
                     {installPrompt && (
-                        <IconButton color="secondary" onClick={handleInstallApp}>
-                            <InstallDesktopIcon />
-                        </IconButton>
+                        <Tooltip title="Установить как приложение">
+                            <IconButton color="secondary" onClick={handleInstallApp} size="small">
+                                <InstallDesktopIcon />
+                            </IconButton>
+                        </Tooltip>
                     )}
 
-                    <Tooltip title="Память">
-                        <IconButton onClick={() => navigate('/settings')} sx={{ color: isSettingsPage ? '#2196f3' : '#666' }}>
-                            <StorageIcon />
+                    <Tooltip title="Настройки хранилища">
+                        <IconButton
+                            size="small"
+                            onClick={() => navigate('/settings')}
+                            sx={{ color: isSettingsPage ? '#2196f3' : '#666', '&:hover': { color: '#fff' } }}
+                        >
+                            <SettingsIcon fontSize="small" />
                         </IconButton>
                     </Tooltip>
 
-                    <Tooltip title="Код">
-                        <IconButton onClick={() => navigate('/')} sx={{ color: !isSettingsPage ? '#2196f3' : '#666' }}>
-                            <CodeIcon />
-                        </IconButton>
-                    </Tooltip>
+                    {/* Юзер-аватар */}
+                    {user && (
+                        <Tooltip title={user.username}>
+                            <Avatar
+                                sx={{
+                                    width: 32, height: 32,
+                                    bgcolor: user.color,
+                                    fontSize: 14, fontWeight: 'bold',
+                                    cursor: 'default',
+                                }}
+                            >
+                                {user.username.charAt(0).toUpperCase()}
+                            </Avatar>
+                        </Tooltip>
+                    )}
                 </Box>
             </Toolbar>
         </AppBar>

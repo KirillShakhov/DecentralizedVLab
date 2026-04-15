@@ -6,6 +6,7 @@ import { JavascriptCompiler } from '../../compilers/javascript';
 import { JavaCompiler } from '../../compilers/java';
 import { SQLiteCompiler } from '../../compilers/sqlite';
 import { LuaCompiler } from '../../compilers/lua';
+import type { Lab } from '../../types';
 
 // Импорты MUI
 import {
@@ -28,9 +29,22 @@ const COMPILERS = {
 
 const STORAGE_KEY = 'vlab_selected_compiler';
 
-export default function Workspace({ roomId, isOnline }) {
-    const [currentLang, setCurrentLang] = useState(() => localStorage.getItem(STORAGE_KEY) || '');
+interface WorkspaceProps {
+    roomId: string;
+    isOnline: boolean;
+    lab?: Lab; // если передана лаба — язык и начальный код берём из неё
+}
+
+export default function Workspace({ roomId, isOnline, lab }: WorkspaceProps) {
+    // Если открыта лаба — используем её язык; иначе — последний выбранный
+    const [currentLang, setCurrentLang] = useState(() => {
+        if (lab) return lab.language;
+        return localStorage.getItem(STORAGE_KEY) || '';
+    });
     const [output, setOutput] = useState(currentLang ? 'Подключение к комнате...' : 'Выберите язык');
+
+    // Начальный код из первого файла лабы (или стандартный шаблон компилятора)
+    const initialCode = lab?.files?.[0]?.content ?? null;
     const [isEngineReady, setIsEngineReady] = useState(false);
     const [status, setStatus] = useState({ isDownloaded: false, isDownloading: false, progress: 0 });
 
@@ -85,7 +99,8 @@ export default function Workspace({ roomId, isOnline }) {
     const handleLangChange = (e) => {
         const newLang = e.target.value;
         setCurrentLang(newLang);
-        localStorage.setItem(STORAGE_KEY, newLang);
+        // Сохраняем только если нет лабы (свободный режим)
+        if (!lab) localStorage.setItem(STORAGE_KEY, newLang);
         setIsEngineReady(false);
     };
 
@@ -202,16 +217,13 @@ export default function Workspace({ roomId, isOnline }) {
                     <CodeEditor
                         roomId={roomId}
                         language={selectedCompiler?.monacoLang || 'text'}
+                        initialCode={initialCode}
                         onEditorReady={(editor) => {
                             editorInstanceRef.current = editor;
 
-                            // Авто-ресайз редактора
                             const observer = new ResizeObserver(() => editor.layout());
                             const container = document.getElementById('editor-container');
                             if (container) observer.observe(container);
-
-                            // ПРИМЕЧАНИЕ: Мы больше НЕ вызываем setValue(template) здесь.
-                            // CodeEditor сам запросит код у SignalR при монтировании.
                         }}
                     />
                 </Paper>
