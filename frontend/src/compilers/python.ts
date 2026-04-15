@@ -49,11 +49,39 @@ export const PythonCompiler = {
         }
     },
 
-    async run(code: string, logOutput: (out: string) => void): Promise<void> {
+    async run(
+        files: Record<string, string>,
+        logOutput: (out: string) => void,
+        stdin?: string
+    ): Promise<void> {
         if (!pyodideInstance) throw new Error("Движок не инициализирован");
 
-        await pyodideInstance.runPythonAsync(`import sys, io\nsys.stdout = io.StringIO()`);
-        await pyodideInstance.runPythonAsync(code);
+        // Перехватываем stdout и stdin
+        const stdinData = stdin ?? '';
+        await pyodideInstance.runPythonAsync(`
+import sys, io
+sys.stdout = io.StringIO()
+sys.stdin = io.StringIO(${JSON.stringify(stdinData)})
+`);
+
+        // Пишем все файлы в виртуальную FS Pyodide
+        for (const [path, content] of Object.entries(files)) {
+            pyodideInstance.FS.writeFile('/' + path, content);
+        }
+
+        // sys.path должен включать корень FS для импортов
+        await pyodideInstance.runPythonAsync(`
+import sys
+if '/' not in sys.path:
+    sys.path.insert(0, '/')
+`);
+
+        // Запускаем точку входа: main.py или первый файл
+        const entry = 'main.py' in files ? 'main.py' : Object.keys(files)[0];
+        await pyodideInstance.runPythonAsync(
+            `exec(open('/${entry}').read())`
+        );
+
         const stdout = await pyodideInstance.runPythonAsync("sys.stdout.getvalue()");
         logOutput(stdout || 'Программа выполнена (нет вывода)');
     },
