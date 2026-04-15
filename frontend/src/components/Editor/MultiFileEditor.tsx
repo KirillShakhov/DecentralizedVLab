@@ -1,8 +1,8 @@
-import React, { useRef, useEffect, useCallback } from 'react'
+import React, { useRef, useEffect, useCallback, useState } from 'react'
 import Editor, { useMonaco } from '@monaco-editor/react'
 import * as Y from 'yjs'
 import { MonacoBinding } from 'y-monaco'
-import { Box, Tab, Tabs, IconButton, Tooltip } from '@mui/material'
+import { Box, IconButton } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 
 // ─── Язык по расширению файла ─────────────────────────────────────────────────
@@ -32,12 +32,29 @@ interface Props {
 export default function MultiFileEditor({
   yfiles, activeFile, openFiles, onCloseTab, onSwitchTab,
 }: Props) {
+  const [filesVersion, setFilesVersion] = useState(0)
   const editorRef = useRef<any>(null)
   // Кэш Monaco моделей: path → ITextModel
   const modelsRef = useRef<Map<string, any>>(new Map())
-  // Кэш Yjs биндингов: path → MonacoBinding
-  const bindingsRef = useRef<Map<string, MonacoBinding>>(new Map())
+  // Держим только один активный биндинг для текущего файла
+  const activeBindingRef = useRef<MonacoBinding | null>(null)
+  const activeBindingPathRef = useRef<string>('')
   const monaco = useMonaco()
+
+  const disposeActiveBinding = useCallback(() => {
+    if (activeBindingRef.current) {
+      activeBindingRef.current.destroy()
+      activeBindingRef.current = null
+      activeBindingPathRef.current = ''
+    }
+  }, [])
+
+  // Y.Map мутируется без смены reference — поэтому отслеживаем изменения через observer
+  useEffect(() => {
+    const bumpVersion = () => setFilesVersion(v => v + 1)
+    yfiles.observe(bumpVersion)
+    return () => yfiles.unobserve(bumpVersion)
+  }, [yfiles])
 
   // Открывает файл в редакторе: создаёт/переиспользует модель + биндинг
   const openInEditor = useCallback((editor: any, monacoInstance: any, filePath: string) => {
@@ -45,58 +62,66 @@ export default function MultiFileEditor({
     const ytext = yfiles.get(filePath)
     if (!ytext) return
 
+    const lang = monacoLang(filePath)
+    const ytextValue = ytext.toString()
+
     // Создаём Monaco модель, если нет
     if (!modelsRef.current.has(filePath)) {
-      const lang = monacoLang(filePath)
       // Monaco URI чтобы не дублировать модели между mount/unmount
       const uri = monacoInstance.Uri.parse(`file:///${filePath}`)
       const existing = monacoInstance.editor.getModel(uri)
-      const model = existing ?? monacoInstance.editor.createModel('', lang, uri)
+      const model = existing ?? monacoInstance.editor.createModel(ytextValue, lang, uri)
+      if (existing && existing.getLanguageId() !== lang) {
+        monacoInstance.editor.setModelLanguage(existing, lang)
+      }
+      if (existing && existing.getValue() !== ytextValue) {
+        existing.setValue(ytextValue)
+      }
       modelsRef.current.set(filePath, model)
     }
 
     const model = modelsRef.current.get(filePath)!
-
-    // Создаём Yjs биндинг, если нет
-    if (!bindingsRef.current.has(filePath)) {
-      const binding = new MonacoBinding(ytext, model, new Set([editor]))
-      bindingsRef.current.set(filePath, binding)
+    if (model.getLanguageId() !== lang) {
+      monacoInstance.editor.setModelLanguage(model, lang)
     }
 
+    // На случай если файл обновился вне модели (например, через Yjs до первого открытия)
+    if (model.getValue() !== ytextValue) {
+      model.setValue(ytextValue)
+    }
+
+    // Важно: сначала переключаем model у editor, затем создаём binding
     editor.setModel(model)
-  }, [yfiles])
+
+    if (activeBindingPathRef.current === filePath && activeBindingRef.current) {
+      return
+    }
+
+    disposeActiveBinding()
+    activeBindingRef.current = new MonacoBinding(ytext, model, new Set([editor]))
+    activeBindingPathRef.current = filePath
+  }, [yfiles, disposeActiveBinding])
 
   // Когда activeFile меняется — переключаем модель
   useEffect(() => {
     if (editorRef.current && monaco && activeFile) {
       openInEditor(editorRef.current, monaco, activeFile)
     }
-  }, [activeFile, monaco, openInEditor])
-
-  // Когда yfiles меняется и в нём появляются новые файлы для открытых вкладок
-  useEffect(() => {
-    if (!editorRef.current || !monaco) return
-    // Пересоздаём биндинг если ytext заменился (редкий кейс после rename)
-    openFiles.forEach(path => {
-      const ytext = yfiles.get(path)
-      if (!ytext) return
-      if (bindingsRef.current.has(path)) return
-      openInEditor(editorRef.current, monaco, path)
-    })
-  }, [yfiles, openFiles, monaco, openInEditor])
+  }, [activeFile, monaco, filesVersion, openInEditor])
 
   // Очищаем биндинги удалённых файлов
   useEffect(() => {
     const currentPaths = new Set(Array.from(yfiles.keys()))
-    bindingsRef.current.forEach((binding, path) => {
+    modelsRef.current.forEach((model, path) => {
       if (!currentPaths.has(path)) {
-        binding.destroy()
-        bindingsRef.current.delete(path)
-        const model = modelsRef.current.get(path)
-        if (model) { model.dispose(); modelsRef.current.delete(path) }
+        if (activeBindingPathRef.current === path) {
+          disposeActiveBinding()
+        }
+        model.dispose()
+        modelsRef.current.delete(path)
       }
     })
-  }, [yfiles])
+  }, [filesVersion, yfiles, disposeActiveBinding])
 
   const handleMount = (editor: any, monacoInstance: any) => {
     editorRef.current = editor
@@ -106,12 +131,11 @@ export default function MultiFileEditor({
   // Cleanup при unmount
   useEffect(() => {
     return () => {
-      bindingsRef.current.forEach(b => b.destroy())
+      disposeActiveBinding()
       modelsRef.current.forEach(m => m.dispose())
-      bindingsRef.current.clear()
       modelsRef.current.clear()
     }
-  }, [])
+  }, [disposeActiveBinding])
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#1e1e1e' }}>

@@ -49,6 +49,7 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
     lab?.language ?? localStorage.getItem(STORAGE_KEY) ?? ''
   );
   const [output, setOutput] = useState(currentLang ? 'Подключение к комнате...' : 'Выберите язык');
+  const [stdin, setStdin] = useState('');
   const [isEngineReady, setIsEngineReady] = useState(false);
   const [status, setStatus] = useState({ isDownloaded: false, isDownloading: false, progress: 0 });
   const [openFiles, setOpenFiles] = useState<string[]>([]);
@@ -153,7 +154,7 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
     if (!isEngineReady) { setOutput('❌ Движок не готов.'); return; }
     setOutput('⏳ Выполнение...');
     try {
-      await compiler.run(getFiles(), setOutput);
+      await compiler.run(getFiles(), setOutput, stdin);
     } catch (err: any) {
       setOutput(`❌ Ошибка:\n${err.message}`);
     }
@@ -354,7 +355,13 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
             flexGrow: 1, bgcolor: '#000', minHeight: 0,
             borderBottom: hasTests ? '1px solid #2a2a2a' : 'none',
           }}>
-            <Terminal output={output} isWasmReady={isEngineReady} onRunCode={runCode} />
+            <Terminal
+              output={output}
+              stdin={stdin}
+              isWasmReady={isEngineReady}
+              onRunCode={runCode}
+              onStdinChange={setStdin}
+            />
           </Box>
 
           {/* TestPanel */}

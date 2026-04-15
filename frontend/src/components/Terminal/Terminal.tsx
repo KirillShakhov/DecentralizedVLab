@@ -1,9 +1,17 @@
 import React from 'react';
-import { Box, Typography, Button } from '@mui/material';
+import { Box, Typography, Button, TextField } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 
-export default function Terminal({ output, isWasmReady, onRunCode }) {
+interface TerminalProps {
+    output: string;
+    stdin: string;
+    isWasmReady: boolean;
+    onRunCode: () => void;
+    onStdinChange: (value: string) => void;
+}
+
+export default function Terminal({ output, stdin, isWasmReady, onRunCode, onStdinChange }: TerminalProps) {
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', p: 2 }}>
             <Typography variant="subtitle1" fontWeight="bold" color="text.secondary" gutterBottom>
@@ -26,6 +34,28 @@ export default function Terminal({ output, isWasmReady, onRunCode }) {
             >
                 {output}
             </Box>
+
+            <TextField
+                label="stdin"
+                placeholder="Введите входные данные для программы"
+                multiline
+                rows={3}
+                value={stdin}
+                onChange={(e) => onStdinChange(e.target.value)}
+                fullWidth
+                size="small"
+                sx={{
+                    mb: 1.5,
+                    '& .MuiOutlinedInput-root': {
+                        bgcolor: '#0a0a0a',
+                        fontFamily: '"Fira Code", monospace',
+                    },
+                    '& .MuiInputBase-input': {
+                        fontFamily: '"Fira Code", monospace',
+                        fontSize: 13,
+                    },
+                }}
+            />
 
             <Button
                 variant="contained"
