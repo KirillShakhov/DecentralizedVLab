@@ -14,6 +14,8 @@ import SaveIcon from '@mui/icons-material/Save'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import FileDownloadIcon from '@mui/icons-material/FileDownload'
+import LockIcon from '@mui/icons-material/Lock'
+import LockOpenIcon from '@mui/icons-material/LockOpen'
 import type { Course, Lab, TestCase, FileTemplate, User } from '../types'
 import { courseDB } from '../db'
 
@@ -164,6 +166,44 @@ export default function CourseEditorPage({ user }: Props) {
       if (l.id !== labId) return l
       const files = [...l.files]
       files[fileIdx] = { ...files[fileIdx], content }
+      return { ...l, files }
+    }))
+  }
+
+  const addFileToLab = (labId: string) => {
+    setLabs(prev => prev.map(l => {
+      if (l.id !== labId) return l
+      const ext = LANG_EXTENSIONS[l.language] ?? 'txt'
+      const existing = l.files.map(f => f.path)
+      let name = `file_${l.files.length}.${ext}`
+      let counter = l.files.length
+      while (existing.includes(name)) { counter++; name = `file_${counter}.${ext}` }
+      return { ...l, files: [...l.files, { path: name, content: '', readOnly: false }] }
+    }))
+  }
+
+  const removeFileFromLab = (labId: string, fileIdx: number) => {
+    setLabs(prev => prev.map(l => {
+      if (l.id !== labId || l.files.length <= 1) return l
+      const files = l.files.filter((_, i) => i !== fileIdx)
+      return { ...l, files }
+    }))
+  }
+
+  const updateFilePath = (labId: string, fileIdx: number, path: string) => {
+    setLabs(prev => prev.map(l => {
+      if (l.id !== labId) return l
+      const files = [...l.files]
+      files[fileIdx] = { ...files[fileIdx], path }
+      return { ...l, files }
+    }))
+  }
+
+  const toggleFileReadOnly = (labId: string, fileIdx: number) => {
+    setLabs(prev => prev.map(l => {
+      if (l.id !== labId) return l
+      const files = [...l.files]
+      files[fileIdx] = { ...files[fileIdx], readOnly: !files[fileIdx].readOnly }
       return { ...l, files }
     }))
   }
@@ -342,20 +382,68 @@ export default function CourseEditorPage({ user }: Props) {
               placeholder="Опишите задание для студентов. Поддерживается Markdown."
             />
 
-            {/* Начальный код */}
+            {/* Файлы лабораторной */}
             <Box>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Начальный код ({lab.files[0]?.path})
-              </Typography>
-              <TextField
-                fullWidth
-                multiline
-                rows={8}
-                value={lab.files[0]?.content ?? ''}
-                onChange={e => updateFileContent(lab.id, 0, e.target.value)}
-                inputProps={{ style: { fontFamily: 'monospace', fontSize: 13 } }}
-                sx={{ '& .MuiOutlinedInput-root': { bgcolor: '#0d0d0d' } }}
-              />
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                <Typography variant="body1" fontWeight="medium">Файлы</Typography>
+                <Button size="small" startIcon={<AddIcon />} onClick={() => addFileToLab(lab.id)}>
+                  Добавить файл
+                </Button>
+              </Box>
+
+              {lab.files.map((file, fileIdx) => (
+                <Card key={fileIdx} sx={{ bgcolor: '#0d0d0d', border: '1px solid #2a2a2a', mb: 1.5 }}>
+                  <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    {/* Строка с именем файла и управлением */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <TextField
+                        size="small"
+                        value={file.path}
+                        onChange={e => updateFilePath(lab.id, fileIdx, e.target.value)}
+                        inputProps={{ style: { fontFamily: 'monospace', fontSize: 13 } }}
+                        sx={{ flexGrow: 1, '& .MuiOutlinedInput-root': { bgcolor: '#141414' } }}
+                      />
+                      <Tooltip title={file.readOnly ? 'Только чтение (студент не редактирует)' : 'Редактируемый файл'}>
+                        <IconButton
+                          size="small"
+                          onClick={() => toggleFileReadOnly(lab.id, fileIdx)}
+                          sx={{ color: file.readOnly ? '#ff9800' : '#555' }}
+                        >
+                          {file.readOnly ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}
+                        </IconButton>
+                      </Tooltip>
+                      {lab.files.length > 1 && (
+                        <Tooltip title="Удалить файл">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => removeFileFromLab(lab.id, fileIdx)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </Box>
+
+                    {/* Содержимое файла */}
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={file.readOnly ? 6 : 8}
+                      value={file.content}
+                      onChange={e => updateFileContent(lab.id, fileIdx, e.target.value)}
+                      placeholder={file.readOnly ? 'Код-заготовка (студент видит, но не редактирует)' : 'Начальный код для студента'}
+                      inputProps={{ style: { fontFamily: 'monospace', fontSize: 13 } }}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: '#0a0a0a',
+                          borderColor: file.readOnly ? '#ff980044' : undefined,
+                        },
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              ))}
             </Box>
 
             <Divider sx={{ borderColor: '#2a2a2a' }} />

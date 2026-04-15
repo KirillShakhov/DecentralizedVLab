@@ -101,53 +101,57 @@ export default function TopBar({ appManager, user }: Props) {
                 {/* ПРАВАЯ ЧАСТЬ: Статусы + управление */}
                 <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
 
-                    {/* Управление оболочкой */}
-                    {isLabDownloading && (
-                        <Chip label="Загрузка ядра..." size="small" color="primary" variant="outlined" />
-                    )}
+                    {/* Управление оболочкой — только вне сессии */}
+                    {!isSession && (
+                        <>
+                            {isLabDownloading && (
+                                <Chip label="Загрузка ядра..." size="small" color="primary" variant="outlined" />
+                            )}
 
-                    {!isLabCached && !isLabDownloading && isOnline && (
-                        <Button
-                            variant="contained"
-                            size="small"
-                            startIcon={<CloudDownloadIcon />}
-                            onClick={handleDownloadLabCore}
-                            sx={{ bgcolor: '#1976d2' }}
-                        >
-                            Скачать оффлайн
-                        </Button>
-                    )}
-
-                    {isLabCached && !isLabDownloading && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            {hasLabUpdate && isOnline ? (
+                            {!isLabCached && !isLabDownloading && isOnline && (
                                 <Button
                                     variant="contained"
-                                    color="warning"
                                     size="small"
-                                    startIcon={<SyncIcon />}
-                                    onClick={handleUpdateLabCore}
+                                    startIcon={<CloudDownloadIcon />}
+                                    onClick={handleDownloadLabCore}
+                                    sx={{ bgcolor: '#1976d2' }}
                                 >
-                                    Обновить
+                                    Скачать оффлайн
                                 </Button>
-                            ) : (
-                                <Chip
-                                    icon={<CloudDoneIcon />}
-                                    label="Offline"
-                                    size="small"
-                                    variant="outlined"
-                                    sx={{ color: '#4caf50', borderColor: '#4caf50' }}
-                                />
                             )}
-                            <Tooltip title="Удалить из кэша">
-                                <IconButton color="error" onClick={handleDeleteLabCore} size="small">
-                                    <DeleteIcon fontSize="small" />
-                                </IconButton>
-                            </Tooltip>
-                        </Box>
-                    )}
 
-                    <Divider orientation="vertical" flexItem sx={{ bgcolor: '#333', mx: 0.5 }} />
+                            {isLabCached && !isLabDownloading && (
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    {hasLabUpdate && isOnline ? (
+                                        <Button
+                                            variant="contained"
+                                            color="warning"
+                                            size="small"
+                                            startIcon={<SyncIcon />}
+                                            onClick={handleUpdateLabCore}
+                                        >
+                                            Обновить
+                                        </Button>
+                                    ) : (
+                                        <Chip
+                                            icon={<CloudDoneIcon />}
+                                            label="Offline"
+                                            size="small"
+                                            variant="outlined"
+                                            sx={{ color: '#4caf50', borderColor: '#4caf50' }}
+                                        />
+                                    )}
+                                    <Tooltip title="Удалить из кэша">
+                                        <IconButton color="error" onClick={handleDeleteLabCore} size="small">
+                                            <DeleteIcon fontSize="small" />
+                                        </IconButton>
+                                    </Tooltip>
+                                </Box>
+                            )}
+
+                            <Divider orientation="vertical" flexItem sx={{ bgcolor: '#333', mx: 0.5 }} />
+                        </>
+                    )}
 
                     {/* Статус сети */}
                     <Chip

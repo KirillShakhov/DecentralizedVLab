@@ -56,9 +56,10 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
   const [showProfiler, setShowProfiler] = useState(false);
   const [snackbar, setSnackbar] = useState('');
 
-  const initialFiles: Record<string, string> = lab?.files
-    ? Object.fromEntries(lab.files.map(f => [f.path, f.content]))
-    : {};
+  const initialFiles = React.useMemo<Record<string, string>>(() =>
+    lab?.files ? Object.fromEntries(lab.files.map(f => [f.path, f.content])) : {},
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [roomId]);
 
   const {
     yfiles, fileList, activeFile, setActiveFile,
