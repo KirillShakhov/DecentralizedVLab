@@ -2,20 +2,21 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Paper, Select, MenuItem, FormControl, InputLabel,
   Button, Chip, Typography, CircularProgress, IconButton,
-  Tooltip, Divider, Collapse,
+  Tooltip, Divider, Collapse, Snackbar,
 } from '@mui/material';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import CloudDoneIcon from '@mui/icons-material/CloudDone';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import DescriptionIcon from '@mui/icons-material/Description';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import SpeedIcon from '@mui/icons-material/Speed';
+import ShareIcon from '@mui/icons-material/Share';
 
 import Terminal from '../Terminal/Terminal';
 import FileTree from '../FileTree/FileTree';
 import MultiFileEditor from '../Editor/MultiFileEditor';
 import TestPanel from '../TestPanel/TestPanel';
 import ParticipantList from '../ParticipantList/ParticipantList';
+import ProfilerPanel from '../ProfilerPanel/ProfilerPanel';
 import { PythonCompiler } from '../../compilers/python';
 import { JavascriptCompiler } from '../../compilers/javascript';
 import { JavaCompiler } from '../../compilers/java';
@@ -23,6 +24,7 @@ import { SQLiteCompiler } from '../../compilers/sqlite';
 import { LuaCompiler } from '../../compilers/lua';
 import { useYjsSession } from '../../hooks/useYjsSession';
 import { useTestRunner } from '../../hooks/useTestRunner';
+import { useProfiler } from '../../hooks/useProfiler';
 import type { Lab, User } from '../../types';
 
 const COMPILERS: Record<string, any> = {
@@ -51,6 +53,8 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
   const [status, setStatus] = useState({ isDownloaded: false, isDownloading: false, progress: 0 });
   const [openFiles, setOpenFiles] = useState<string[]>([]);
   const [showDescription, setShowDescription] = useState(true);
+  const [showProfiler, setShowProfiler] = useState(false);
+  const [snackbar, setSnackbar] = useState('');
 
   const initialFiles: Record<string, string> = lab?.files
     ? Object.fromEntries(lab.files.map(f => [f.path, f.content]))
@@ -63,6 +67,8 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
 
   const compiler = COMPILERS[currentLang] ?? null;
   const { results, running, runTests, summary } = useTestRunner(getFiles, compiler);
+  const { result: profilerResult, running: profilerRunning, progress: profilerProgress, runBenchmark } =
+    useProfiler(getFiles, compiler, currentLang);
 
   // Синхронизируем вкладки с fileList
   useEffect(() => {
@@ -169,11 +175,19 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
     setOpenFiles(prev => prev.includes(path) ? prev : [...prev, path]);
   };
 
+  const handleShare = async () => {
+    const url = window.location.href
+    await navigator.clipboard.writeText(url)
+    setSnackbar('Ссылка скопирована!')
+  }
+
+  const roomCode = roomId.slice(0, 8).toUpperCase()
   const readOnlyFiles = lab?.files?.filter(f => f.readOnly).map(f => f.path) ?? [];
   const hasTests = (lab?.testCases?.length ?? 0) > 0;
   const effectiveOpenFiles = openFiles.length > 0 ? openFiles : fileList.slice(0, 1);
 
   return (
+    <>
     <Box sx={{
       display: 'flex', flexDirection: 'column',
       height: 'calc(100vh - 64px)', bgcolor: '#0a0a0a', overflow: 'hidden',
@@ -189,12 +203,29 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           {lab && (
             <>
-              <Typography variant="body2" fontWeight="bold" color="text.secondary" noWrap sx={{ maxWidth: 220 }}>
+              <Typography variant="body2" fontWeight="bold" color="text.secondary" noWrap sx={{ maxWidth: 200 }}>
                 {lab.title}
               </Typography>
               <Divider orientation="vertical" flexItem sx={{ bgcolor: '#333' }} />
             </>
           )}
+
+          {/* Код комнаты + share */}
+          <Tooltip title="Скопировать ссылку на сессию">
+            <Chip
+              label={roomCode}
+              size="small"
+              icon={<ShareIcon sx={{ fontSize: '14px !important' }} />}
+              onClick={handleShare}
+              sx={{
+                bgcolor: '#1a1a1a', color: '#666', border: '1px solid #2a2a2a',
+                fontFamily: 'monospace', cursor: 'pointer',
+                '&:hover': { bgcolor: '#222', color: '#aaa' },
+              }}
+            />
+          </Tooltip>
+
+          <Divider orientation="vertical" flexItem sx={{ bgcolor: '#2a2a2a' }} />
 
           <FormControl size="small" sx={{ minWidth: 170 }}>
             <InputLabel sx={{ color: '#666' }}>Среда</InputLabel>
@@ -226,6 +257,18 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
               </IconButton>
             </Tooltip>
           )}
+
+          {/* Профилировщик */}
+          <Tooltip title="Профилировщик WASM (бенчмарк)">
+            <IconButton
+              size="small"
+              onClick={() => setShowProfiler(true)}
+              disabled={!isEngineReady}
+              sx={{ color: isEngineReady ? '#ff9800' : '#333', '&:hover': { color: '#ffb74d' } }}
+            >
+              <SpeedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
 
         {/* Правая часть: участники + статус движка */}
@@ -326,5 +369,26 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
         </Box>
       </Box>
     </Box>
+
+      {/* Профилировщик — монтируется вне основного Box как Portal (MUI Dialog) */}
+      <ProfilerPanel
+        open={showProfiler}
+        onClose={() => setShowProfiler(false)}
+        result={profilerResult}
+        running={profilerRunning}
+        progress={profilerProgress}
+        isEngineReady={isEngineReady}
+        onRunBenchmark={runBenchmark}
+      />
+
+      {/* Snackbar уведомления */}
+      <Snackbar
+        open={!!snackbar}
+        autoHideDuration={2500}
+        onClose={() => setSnackbar('')}
+        message={snackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+    </>
   );
 }
