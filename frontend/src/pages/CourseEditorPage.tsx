@@ -13,6 +13,7 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import SaveIcon from '@mui/icons-material/Save'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import VisibilityIcon from '@mui/icons-material/Visibility'
+import FileDownloadIcon from '@mui/icons-material/FileDownload'
 import type { Course, Lab, TestCase, FileTemplate, User } from '../types'
 import { courseDB } from '../db'
 
@@ -83,6 +84,27 @@ export default function CourseEditorPage({ user }: Props) {
   }, [courseId])
 
   // ─── Курс ────────────────────────────────────────────────────────────────
+
+  const handleExport = () => {
+    const course: Course = {
+      id: courseId ?? 'exported',
+      title: title.trim(),
+      description: description.trim(),
+      authorId: user.id,
+      authorName: user.username,
+      labs,
+      isPublic,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+    const blob = new Blob([JSON.stringify(course, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${(title || 'course').replace(/\s+/g, '_')}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const handleSave = async () => {
     if (!title.trim()) { setError('Введите название курса'); return }
@@ -183,14 +205,27 @@ export default function CourseEditorPage({ user }: Props) {
         <Typography variant="h5" fontWeight="bold">
           {isEdit ? 'Редактировать курс' : 'Создать курс'}
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<SaveIcon />}
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving ? 'Сохранение...' : 'Сохранить'}
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {isEdit && (
+            <Tooltip title="Скачать курс как JSON для импорта на другом устройстве">
+              <Button
+                variant="outlined"
+                startIcon={<FileDownloadIcon />}
+                onClick={handleExport}
+              >
+                Экспорт JSON
+              </Button>
+            </Tooltip>
+          )}
+          <Button
+            variant="contained"
+            startIcon={<SaveIcon />}
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? 'Сохранение...' : 'Сохранить'}
+          </Button>
+        </Box>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}

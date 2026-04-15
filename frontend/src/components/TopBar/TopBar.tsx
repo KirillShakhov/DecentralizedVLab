@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
     AppBar, Toolbar, Box, Button, Chip, IconButton,
     Tooltip, Divider, Avatar, Typography,
 } from '@mui/material';
+import { sessionDB } from '../../db';
 import InstallDesktopIcon from '@mui/icons-material/InstallDesktop';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import CloudDoneIcon from '@mui/icons-material/CloudDone';
@@ -31,6 +32,17 @@ export default function TopBar({ appManager, user }: Props) {
     const isSettingsPage = location.pathname === '/settings';
     const isHomePage = location.pathname === '/';
     const isSession = location.pathname.startsWith('/session/');
+
+    const [sessionContext, setSessionContext] = useState<{ labTitle: string; courseTitle: string } | null>(null);
+
+    useEffect(() => {
+        if (!isSession) { setSessionContext(null); return; }
+        const sessionId = location.pathname.split('/session/')[1];
+        if (!sessionId) return;
+        sessionDB.get(sessionId).then(s => {
+            if (s) setSessionContext({ labTitle: s.labTitle, courseTitle: s.courseTitle });
+        });
+    }, [location.pathname, isSession]);
 
     return (
         <AppBar
@@ -69,6 +81,20 @@ export default function TopBar({ appManager, user }: Props) {
                                 <HomeIcon fontSize="small" />
                             </IconButton>
                         </Tooltip>
+                    )}
+
+                    {isSession && sessionContext && (
+                        <>
+                            <Divider orientation="vertical" flexItem sx={{ bgcolor: '#2a2a2a', mx: 0.5 }} />
+                            <Box sx={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                                <Typography variant="caption" color="#555" noWrap sx={{ maxWidth: 240 }}>
+                                    {sessionContext.courseTitle}
+                                </Typography>
+                                <Typography variant="body2" fontWeight="bold" color="#ccc" noWrap sx={{ maxWidth: 240 }}>
+                                    {sessionContext.labTitle}
+                                </Typography>
+                            </Box>
+                        </>
                     )}
                 </Box>
 

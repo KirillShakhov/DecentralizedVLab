@@ -1,16 +1,21 @@
-import React from 'react'
+import React, { useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box, Typography, Button, Card, CardContent, CardActionArea,
   CardActions, Chip, Grid, Skeleton, Avatar, Divider, IconButton, Tooltip,
+  Snackbar,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SchoolIcon from '@mui/icons-material/School'
 import CodeIcon from '@mui/icons-material/Code'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import type { User } from '../types'
+import FileUploadIcon from '@mui/icons-material/FileUpload'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
+import type { Course, User } from '../types'
 import { useCourseStore, useRecentSessions } from '../hooks/useCourseStore'
+import { courseDB } from '../db'
+import { demoCourse } from '../data/demoCourse'
 
 const LANG_LABELS: Record<string, string> = {
   python: 'Python', javascript: 'JavaScript', lua: 'Lua', sqlite: 'SQLite', java: 'Java',
@@ -32,8 +37,49 @@ interface Props {
 
 export default function HomePage({ user }: Props) {
   const navigate = useNavigate()
-  const { myCourses, loading, deleteCourse } = useCourseStore(user.id)
+  const { myCourses, loading, deleteCourse, reload } = useCourseStore(user.id)
   const { sessions, deleteSession } = useRecentSessions()
+  const [snackbar, setSnackbar] = React.useState('')
+  const importRef = useRef<HTMLInputElement>(null)
+
+  const handleImportClick = () => importRef.current?.click()
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    try {
+      const text = await file.text()
+      const raw = JSON.parse(text) as Course
+      if (!raw.title || !Array.isArray(raw.labs)) throw new Error('Неверный формат')
+      const course: Course = {
+        ...raw,
+        id: crypto.randomUUID(),
+        authorId: user.id,
+        authorName: user.username,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      await courseDB.save(course)
+      await reload()
+      setSnackbar(`Курс "${course.title}" импортирован`)
+    } catch (err: any) {
+      setSnackbar(`Ошибка импорта: ${err.message}`)
+    }
+  }
+
+  const handleLoadDemo = async () => {
+    const existing = await courseDB.get(demoCourse.id)
+    const course: Course = {
+      ...demoCourse,
+      id: existing ? crypto.randomUUID() : demoCourse.id,
+      authorId: user.id,
+      authorName: user.username,
+    }
+    await courseDB.save(course)
+    await reload()
+    setSnackbar('Демо-курс загружен!')
+  }
 
   return (
     <Box sx={{ maxWidth: 1100, mx: 'auto', px: 2, py: 3 }}>
@@ -48,14 +94,27 @@ export default function HomePage({ user }: Props) {
             Создавайте курсы, запускайте лабораторные и работайте совместно
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          size="large"
-          startIcon={<AddIcon />}
-          onClick={() => navigate('/courses/new')}
-        >
-          Новый курс
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImportFile} />
+          <Tooltip title="Импортировать курс из JSON-файла">
+            <Button
+              variant="outlined"
+              size="large"
+              startIcon={<FileUploadIcon />}
+              onClick={handleImportClick}
+            >
+              Импорт
+            </Button>
+          </Tooltip>
+          <Button
+            variant="contained"
+            size="large"
+            startIcon={<AddIcon />}
+            onClick={() => navigate('/courses/new')}
+          >
+            Новый курс
+          </Button>
+        </Box>
       </Box>
 
       {/* Мои курсы */}
@@ -75,15 +134,24 @@ export default function HomePage({ user }: Props) {
         <Card sx={{ bgcolor: '#141414', border: '1px dashed #333', mb: 4 }}>
           <CardContent sx={{ py: 5, textAlign: 'center' }}>
             <SchoolIcon sx={{ fontSize: 48, color: '#444', mb: 2 }} />
-            <Typography color="text.secondary">У вас ещё нет курсов</Typography>
-            <Button
-              variant="outlined"
-              startIcon={<AddIcon />}
-              sx={{ mt: 2 }}
-              onClick={() => navigate('/courses/new')}
-            >
-              Создать первый курс
-            </Button>
+            <Typography color="text.secondary" sx={{ mb: 2 }}>У вас ещё нет курсов</Typography>
+            <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                startIcon={<AutoAwesomeIcon />}
+                onClick={handleLoadDemo}
+                sx={{ bgcolor: '#1565c0' }}
+              >
+                Загрузить демо-курс
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={() => navigate('/courses/new')}
+              >
+                Создать курс
+              </Button>
+            </Box>
           </CardContent>
         </Card>
       ) : (
@@ -188,6 +256,14 @@ export default function HomePage({ user }: Props) {
           ))}
         </Box>
       )}
+
+      <Snackbar
+        open={!!snackbar}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar('')}
+        message={snackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
   )
 }

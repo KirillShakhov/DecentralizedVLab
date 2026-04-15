@@ -137,11 +137,14 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
   };
 
   const handleReset = () => {
-    if (!lab?.files?.[0]) return;
-    const ytext = yfiles.get(lab.files[0].path);
-    if (!ytext) return;
-    ytext.delete(0, ytext.length);
-    ytext.insert(0, lab.files[0].content);
+    if (!lab?.files?.length) return;
+    for (const f of lab.files) {
+      if (f.readOnly) continue;
+      const ytext = yfiles.get(f.path);
+      if (!ytext) continue;
+      ytext.delete(0, ytext.length);
+      ytext.insert(0, f.content);
+    }
     setOutput('Код сброшен к шаблону.');
   };
 
