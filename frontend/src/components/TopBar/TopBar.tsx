@@ -49,34 +49,50 @@ export default function TopBar({ appManager, user }: Props) {
             position="static"
             elevation={0}
             sx={{
-                bgcolor: '#141414',
-                borderBottom: '1px solid #2a2a2a',
+                bgcolor: 'background.paper',
+                borderBottom: '1px solid',
+                borderColor: 'divider',
                 zIndex: (theme) => theme.zIndex.drawer + 1,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
             }}
         >
-            <Toolbar sx={{ justifyContent: 'space-between', minHeight: 64 }}>
+            <Toolbar sx={{ justifyContent: 'space-between', minHeight: 60 }}>
 
-                {/* ЛЕВАЯ ЧАСТЬ: Лого + навигация */}
+                {/* Лого + навигация */}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography
-                        variant="h6"
-                        fontWeight="bold"
-                        sx={{
-                            cursor: 'pointer', color: '#fff',
-                            '&:hover': { color: '#90caf9' },
-                            userSelect: 'none',
-                        }}
+                    <Box
                         onClick={() => navigate('/')}
+                        sx={{
+                            display: 'flex', alignItems: 'center', gap: 1,
+                            cursor: 'pointer', userSelect: 'none',
+                            '&:hover': { opacity: 0.85 },
+                        }}
                     >
-                        В-Лаба
-                    </Typography>
+                        <Box sx={{
+                            width: 30, height: 30, borderRadius: '8px',
+                            background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            flexShrink: 0,
+                        }}>
+                            <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: 14, lineHeight: 1 }}>
+                                В
+                            </Typography>
+                        </Box>
+                        <Typography
+                            variant="h6"
+                            fontWeight={700}
+                            sx={{ color: 'text.primary', fontSize: 16 }}
+                        >
+                            В-Лаба
+                        </Typography>
+                    </Box>
 
                     {!isHomePage && (
                         <Tooltip title="Главная">
                             <IconButton
                                 size="small"
                                 onClick={() => navigate('/')}
-                                sx={{ color: '#666', '&:hover': { color: '#fff' } }}
+                                sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary', bgcolor: 'action.hover' } }}
                             >
                                 <HomeIcon fontSize="small" />
                             </IconButton>
@@ -85,12 +101,12 @@ export default function TopBar({ appManager, user }: Props) {
 
                     {isSession && sessionContext && (
                         <>
-                            <Divider orientation="vertical" flexItem sx={{ bgcolor: '#2a2a2a', mx: 0.5 }} />
+                            <Divider orientation="vertical" flexItem sx={{ mx: 0.5, borderColor: 'divider' }} />
                             <Box sx={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-                                <Typography variant="caption" color="#555" noWrap sx={{ maxWidth: 240 }}>
+                                <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 240 }}>
                                     {sessionContext.courseTitle}
                                 </Typography>
-                                <Typography variant="body2" fontWeight="bold" color="#ccc" noWrap sx={{ maxWidth: 240 }}>
+                                <Typography variant="body2" fontWeight={600} color="text.primary" noWrap sx={{ maxWidth: 240 }}>
                                     {sessionContext.labTitle}
                                 </Typography>
                             </Box>
@@ -98,10 +114,9 @@ export default function TopBar({ appManager, user }: Props) {
                     )}
                 </Box>
 
-                {/* ПРАВАЯ ЧАСТЬ: Статусы + управление */}
+                {/* Правая часть */}
                 <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
 
-                    {/* Управление оболочкой — только вне сессии */}
                     {!isSession && (
                         <>
                             {isLabDownloading && (
@@ -114,7 +129,6 @@ export default function TopBar({ appManager, user }: Props) {
                                     size="small"
                                     startIcon={<CloudDownloadIcon />}
                                     onClick={handleDownloadLabCore}
-                                    sx={{ bgcolor: '#1976d2' }}
                                 >
                                     Скачать оффлайн
                                 </Button>
@@ -138,7 +152,7 @@ export default function TopBar({ appManager, user }: Props) {
                                             label="Offline"
                                             size="small"
                                             variant="outlined"
-                                            sx={{ color: '#4caf50', borderColor: '#4caf50' }}
+                                            color="success"
                                         />
                                     )}
                                     <Tooltip title="Удалить из кэша">
@@ -149,26 +163,28 @@ export default function TopBar({ appManager, user }: Props) {
                                 </Box>
                             )}
 
-                            <Divider orientation="vertical" flexItem sx={{ bgcolor: '#333', mx: 0.5 }} />
+                            <Divider orientation="vertical" flexItem sx={{ borderColor: 'divider', mx: 0.5 }} />
                         </>
                     )}
 
-                    {/* Статус сети */}
                     <Chip
-                        icon={isOnline ? <CloudDoneIcon /> : <CloudOffIcon />}
+                        icon={isOnline
+                            ? <CloudDoneIcon sx={{ fontSize: '14px !important' }} />
+                            : <CloudOffIcon sx={{ fontSize: '14px !important' }} />
+                        }
                         label={isOnline ? 'Online' : 'Offline'}
                         size="small"
                         sx={{
-                            bgcolor: isOnline ? 'rgba(76,175,80,0.1)' : 'rgba(255,152,0,0.1)',
-                            color: isOnline ? '#4caf50' : '#ff9800',
-                            border: `1px solid ${isOnline ? '#4caf50' : '#ff9800'}`,
-                            fontWeight: 'bold',
+                            bgcolor: isOnline ? 'rgba(5,150,105,0.08)' : 'rgba(217,119,6,0.08)',
+                            color: isOnline ? '#059669' : '#d97706',
+                            border: `1px solid ${isOnline ? 'rgba(5,150,105,0.25)' : 'rgba(217,119,6,0.25)'}`,
+                            fontWeight: 600,
                         }}
                     />
 
                     {installPrompt && (
                         <Tooltip title="Установить как приложение">
-                            <IconButton color="secondary" onClick={handleInstallApp} size="small">
+                            <IconButton color="primary" onClick={handleInstallApp} size="small">
                                 <InstallDesktopIcon />
                             </IconButton>
                         </Tooltip>
@@ -178,21 +194,25 @@ export default function TopBar({ appManager, user }: Props) {
                         <IconButton
                             size="small"
                             onClick={() => navigate('/settings')}
-                            sx={{ color: isSettingsPage ? '#2196f3' : '#666', '&:hover': { color: '#fff' } }}
+                            sx={{
+                                color: isSettingsPage ? 'primary.main' : 'text.secondary',
+                                bgcolor: isSettingsPage ? 'rgba(79,70,229,0.08)' : 'transparent',
+                                '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
+                            }}
                         >
                             <SettingsIcon fontSize="small" />
                         </IconButton>
                     </Tooltip>
 
-                    {/* Юзер-аватар */}
                     {user && (
                         <Tooltip title={user.username}>
                             <Avatar
                                 sx={{
                                     width: 32, height: 32,
                                     bgcolor: user.color,
-                                    fontSize: 14, fontWeight: 'bold',
+                                    fontSize: 13, fontWeight: 700,
                                     cursor: 'default',
+                                    boxShadow: '0 0 0 2px #fff, 0 0 0 3px rgba(79,70,229,0.2)',
                                 }}
                             >
                                 {user.username.charAt(0).toUpperCase()}
