@@ -15,28 +15,32 @@ export default function SessionPage({ user, isOnline }: Props) {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
 
-  const [lab, setLab] = useState<Lab | null>(null)
+  const [lab, setLab] = useState<Lab | undefined>(undefined)
   const [course, setCourse] = useState<Course | null>(null)
   const [nextLab, setNextLab] = useState<Lab | null>(null)
   const [labIndex, setLabIndex] = useState(1)
   const [completedCount, setCompletedCount] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [notFound, setNotFound] = useState(false)
 
   useEffect(() => {
-    if (!sessionId) { setNotFound(true); setLoading(false); return }
+    if (!sessionId) { setLoading(false); return }
 
     const load = async () => {
       const session = await sessionDB.get(sessionId)
-      if (!session) { setNotFound(true); setLoading(false); return }
+      if (!session) {
+        // Collaborator joining via shared link — no local session data.
+        // Workspace will sync lab info from Yjs.
+        setLoading(false)
+        return
+      }
 
       await sessionDB.save({ ...session, lastActive: Date.now() })
 
       const c = await courseDB.get(session.courseId)
-      if (!c) { setNotFound(true); setLoading(false); return }
+      if (!c) { setLoading(false); return }
 
       const foundLab = c.labs.find(l => l.id === session.labId)
-      if (!foundLab) { setNotFound(true); setLoading(false); return }
+      if (!foundLab) { setLoading(false); return }
 
       const sorted = c.labs.slice().sort((a, b) => a.order - b.order)
       const idx = sorted.findIndex(l => l.id === session.labId)
@@ -84,7 +88,7 @@ export default function SessionPage({ user, isOnline }: Props) {
     )
   }
 
-  if (notFound || !lab || !sessionId) {
+  if (!sessionId) {
     return (
       <Box sx={{ textAlign: 'center', py: 8 }}>
         <Typography variant="h6" color="text.secondary">Сессия не найдена</Typography>

@@ -123,17 +123,50 @@ export default function Workspace({
   [roomId]);
 
   const {
-    yfiles, fileList, activeFile, setActiveFile,
+    ydoc, yfiles, fileList, activeFile, setActiveFile,
     addFile, deleteFile, getFiles, participants,
   } = useYjsSession(roomId, isOnline, initialFiles, user);
+
+  const ymeta = ydoc.getMap<string>('meta');
+
+  // Store lab metadata so collaborators joining via link can read it from Yjs
+  useEffect(() => {
+    if (lab && !ymeta.has('lab')) {
+      ymeta.set('lab', JSON.stringify(lab));
+    }
+  }, [lab]);
+
+  const [yjsLab, setYjsLab] = useState<Lab | null>(() => {
+    const stored = ymeta.get('lab');
+    return stored ? (JSON.parse(stored) as Lab) : null;
+  });
+
+  useEffect(() => {
+    const sync = () => {
+      const stored = ymeta.get('lab');
+      if (stored) setYjsLab(JSON.parse(stored) as Lab);
+    };
+    sync();
+    ymeta.observe(sync);
+    return () => ymeta.unobserve(sync);
+  }, [ymeta]);
+
+  const resolvedLab = lab ?? yjsLab;
+
+  // When lab syncs from Yjs (collaborator joining via link), set language
+  useEffect(() => {
+    if (yjsLab?.language && !lab && !currentLang) {
+      setCurrentLang(yjsLab.language);
+    }
+  }, [yjsLab?.language]);
 
   const compiler = COMPILERS[currentLang] ?? null;
   const { results, running, runTests, summary } = useTestRunner(getFiles, compiler);
   const { result: profilerResult, running: profilerRunning, progress: profilerProgress, runBenchmark } =
     useProfiler(getFiles, compiler, currentLang);
 
-  const hasTests = (lab?.testCases?.length ?? 0) > 0;
-  const hasDescription = !!lab?.description;
+  const hasTests = (resolvedLab?.testCases?.length ?? 0) > 0;
+  const hasDescription = !!resolvedLab?.description;
 
   const allTestsPassed = useMemo(() =>
     hasTests && !running && summary.total > 0 && summary.passed === summary.total,
@@ -195,7 +228,7 @@ export default function Workspace({
   const handleLangChange = (e: any) => {
     const lang = e.target.value;
     setCurrentLang(lang);
-    if (!lab) localStorage.setItem(STORAGE_KEY, lang);
+    if (!resolvedLab) localStorage.setItem(STORAGE_KEY, lang);
     setIsEngineReady(false);
   };
 
@@ -212,8 +245,8 @@ export default function Workspace({
   };
 
   const handleReset = () => {
-    if (!lab?.files?.length) return;
-    for (const f of lab.files) {
+    if (!resolvedLab?.files?.length) return;
+    for (const f of resolvedLab.files) {
       if (f.readOnly) continue;
       const ytext = yfiles.get(f.path);
       if (!ytext) continue;
@@ -257,7 +290,7 @@ export default function Workspace({
   };
 
   const roomCode = roomId.slice(0, 8).toUpperCase();
-  const readOnlyFiles = lab?.files?.filter(f => f.readOnly).map(f => f.path) ?? [];
+  const readOnlyFiles = resolvedLab?.files?.filter(f => f.readOnly).map(f => f.path) ?? [];
   const effectiveOpenFiles = openFiles.length > 0 ? openFiles : fileList.slice(0, 1);
 
   // Next lab button visible in toolbar when description panel is not showing it
@@ -280,10 +313,10 @@ export default function Workspace({
       }}>
         {/* Левая часть */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          {lab && (
+          {resolvedLab && (
             <>
               <Typography variant="body2" fontWeight={600} color="text.secondary" noWrap sx={{ maxWidth: 200 }}>
-                {lab.title}
+                {resolvedLab.title}
               </Typography>
               <Divider orientation="vertical" flexItem sx={{ borderColor: 'divider' }} />
             </>
@@ -311,7 +344,7 @@ export default function Workspace({
             <InputLabel sx={{ color: 'text.secondary', fontSize: 13 }}>Среда</InputLabel>
             <Select
               value={currentLang} label="Среда" onChange={handleLangChange}
-              disabled={!!lab}
+              disabled={!!resolvedLab}
               sx={{ fontSize: 13, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' } }}
             >
               <MenuItem value=""><em>Выбрать</em></MenuItem>
@@ -336,7 +369,7 @@ export default function Workspace({
             </Tooltip>
           )}
 
-          {lab && (
+          {resolvedLab && (
             <Tooltip title="Сбросить к шаблону">
               <IconButton size="small" onClick={handleReset}
                 sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}>
@@ -476,7 +509,7 @@ export default function Workspace({
                   <Typography variant="body2" color="text.primary" sx={{
                     whiteSpace: 'pre-wrap', lineHeight: 1.85, fontSize: '13px',
                   }}>
-                    {lab!.description}
+                    {resolvedLab!.description}
                   </Typography>
                 </Box>
 
@@ -595,10 +628,10 @@ export default function Workspace({
           {hasTests && (
             <Box sx={{ flexShrink: 0, maxHeight: '45%', display: 'flex', flexDirection: 'column' }}>
               <TestPanel
-                testCases={lab!.testCases} results={results}
+                testCases={resolvedLab!.testCases} results={results}
                 running={running} summary={summary}
                 isEngineReady={isEngineReady}
-                onRunTests={() => runTests(lab!.testCases)}
+                onRunTests={() => runTests(resolvedLab!.testCases)}
               />
             </Box>
           )}
