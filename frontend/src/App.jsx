@@ -15,18 +15,18 @@ function App() {
     const appManager = useAppManager();
     const { user, isProfileReady, createProfile } = useUserProfile();
 
-    // Экран инициализации
     if (!appManager.isAppReady) {
         return (
             <Box sx={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
-                justifyContent: 'center', minHeight: '100vh', bgcolor: '#0a0a0a',
+                justifyContent: 'center', minHeight: '100vh',
+                bgcolor: 'background.default',
             }}>
-                <CircularProgress size={60} thickness={4} sx={{ color: '#2196f3' }} />
-                <Typography variant="h6" sx={{ mt: 3, color: '#fff', fontWeight: 'bold' }}>
+                <CircularProgress size={56} thickness={4} sx={{ color: 'primary.main' }} />
+                <Typography variant="h6" sx={{ mt: 3, fontWeight: 700, color: 'text.primary' }}>
                     Инициализация В-Лаборатории...
                 </Typography>
-                <Typography variant="body2" sx={{ mt: 1, color: '#666' }}>
+                <Typography variant="body2" sx={{ mt: 1, color: 'text.secondary' }}>
                     Проверка децентрализованных узлов и кэша WASM
                 </Typography>
             </Box>
@@ -37,7 +37,6 @@ function App() {
         <Router>
             <CssBaseline />
 
-            {/* Диалог первого запуска — блокирует всё, пока нет профиля */}
             <ProfileSetupDialog
                 open={!isProfileReady}
                 onConfirm={createProfile}
@@ -47,50 +46,22 @@ function App() {
                 display: 'flex',
                 flexDirection: 'column',
                 minHeight: '100vh',
-                bgcolor: '#0a0a0a',
+                bgcolor: 'background.default',
             }}>
                 <TopBar appManager={appManager} user={user} />
 
                 <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
                     <Routes>
-                        {/* Главная */}
-                        <Route
-                            path="/"
-                            element={user ? <HomePage user={user} /> : null}
-                        />
-
-                        {/* Курсы */}
-                        <Route
-                            path="/courses/new"
-                            element={user ? <CourseEditorPage user={user} /> : null}
-                        />
-                        <Route
-                            path="/courses/:courseId/edit"
-                            element={user ? <CourseEditorPage user={user} /> : null}
-                        />
-                        <Route
-                            path="/courses/:courseId"
-                            element={user ? <CoursePage user={user} /> : null}
-                        />
-
-                        {/* Сессия (рабочая область) */}
+                        <Route path="/" element={user ? <HomePage user={user} /> : null} />
+                        <Route path="/courses/new" element={user ? <CourseEditorPage user={user} /> : null} />
+                        <Route path="/courses/:courseId/edit" element={user ? <CourseEditorPage user={user} /> : null} />
+                        <Route path="/courses/:courseId" element={user ? <CoursePage user={user} /> : null} />
                         <Route
                             path="/session/:sessionId"
-                            element={user
-                                ? <SessionPage user={user} isOnline={appManager.isOnline} />
-                                : null
-                            }
+                            element={user ? <SessionPage user={user} isOnline={appManager.isOnline} /> : null}
                         />
-
-                        {/* Настройки */}
-                        <Route
-                            path="/settings"
-                            element={<Settings appManager={appManager} />}
-                        />
-
-                        {/* Редирект старых ссылок на /room/:id */}
+                        <Route path="/settings" element={<Settings appManager={appManager} />} />
                         <Route path="/room/:id" element={<Navigate to="/" replace />} />
-
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                 </Box>

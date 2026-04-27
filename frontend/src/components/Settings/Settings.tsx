@@ -70,28 +70,27 @@ export default function Settings({ appManager }) {
     };
 
     return (
-        <Container maxWidth="md" sx={{ mt: 2 }}>
-            <Typography variant="h5" sx={{ color: '#fff', mb: 3, fontWeight: 'bold' }}>
+        <Container maxWidth="md" sx={{ mt: 4 }}>
+            <Typography variant="h5" fontWeight={700} color="text.primary" sx={{ mb: 3 }}>
                 Мониторинг ресурсов
             </Typography>
 
             <Box sx={{ display: 'grid', gridTemplateColumns: { md: '1fr 320px', xs: '1fr' }, gap: 3 }}>
-                <Paper variant="outlined" sx={{ bgcolor: '#141414', borderColor: '#2a2a2a', borderRadius: 3 }}>
+                <Paper variant="outlined" sx={{ borderRadius: 3, borderColor: 'divider' }}>
                     <List disablePadding>
                         {stats.map((item, index) => (
                             <React.Fragment key={item.id}>
-                                <ListItem sx={{ py: 2 }}>
+                                <ListItem sx={{ py: 2, px: 2.5 }}>
                                     <ListItemText
                                         primary={
-                                            <Typography sx={{ color: item.isCore ? '#2196f3' : '#fff', fontWeight: 600 }}>
+                                            <Typography sx={{ color: item.isCore ? 'primary.main' : 'text.primary', fontWeight: 600 }}>
                                                 {item.name}
                                             </Typography>
                                         }
                                         secondary={item.size > 0 ? `Занято: ${formatBytes(item.size)}` : 'Не загружено'}
-                                        secondaryTypographyProps={{ sx: { color: item.size > 0 ? '#4caf50' : '#555' } }}
+                                        secondaryTypographyProps={{ sx: { color: item.size > 0 ? 'success.main' : 'text.disabled' } }}
                                     />
                                     <ListItemSecondaryAction>
-                                        {/* Показываем кнопку удаления, если размер > 0 */}
                                         {item.size > 0 && (
                                             <IconButton color="error" onClick={() => handleDelete(item)}>
                                                 <DeleteIcon fontSize="small" />
@@ -99,41 +98,40 @@ export default function Settings({ appManager }) {
                                         )}
                                     </ListItemSecondaryAction>
                                 </ListItem>
-                                {index < stats.length - 1 && <Divider sx={{ bgcolor: '#222' }} />}
+                                {index < stats.length - 1 && <Divider />}
                             </React.Fragment>
                         ))}
                     </List>
                 </Paper>
 
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <Card sx={{ bgcolor: '#141414', border: '1px solid #2a2a2a', color: '#fff', borderRadius: 3 }}>
+                    <Card sx={{ borderRadius: 3 }}>
                         <CardContent>
                             <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
                                 <StorageIcon color="primary" />
-                                <Typography variant="h6">Память</Typography>
+                                <Typography variant="h6" fontWeight={600}>Память</Typography>
                             </Box>
-                            <Typography variant="body2" sx={{ color: '#888', mb: 1 }}>
-                                Всего: <strong>{formatBytes(total)}</strong>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                Всего: <strong style={{ color: 'inherit' }}>{formatBytes(total)}</strong>
                             </Typography>
                             <LinearProgress
                                 variant="determinate"
                                 value={quota ? (total / quota) * 100 : 0}
-                                sx={{ height: 6, borderRadius: 3, bgcolor: '#222', mb: 2 }}
+                                sx={{ height: 6, borderRadius: 3, mb: 2 }}
                             />
-                            <Typography variant="caption" sx={{ color: '#555' }}>
+                            <Typography variant="caption" color="text.secondary">
                                 Доступно браузером: {formatBytes(quota)}
                             </Typography>
                         </CardContent>
                     </Card>
 
-                    {/* Дополнительная кнопка полного сброса (опционально, если добавляли handleNuclearWipe) */}
                     {appManager?.handleNuclearWipe && (
                         <Button
                             variant="outlined"
                             color="error"
                             startIcon={<WarningAmberIcon />}
                             onClick={appManager.handleNuclearWipe}
-                            sx={{ borderRadius: 2, textTransform: 'none', py: 1.5, borderColor: 'rgba(211, 47, 47, 0.5)' }}
+                            sx={{ borderRadius: 2, py: 1.5 }}
                         >
                             Экстренный сброс данных
                         </Button>

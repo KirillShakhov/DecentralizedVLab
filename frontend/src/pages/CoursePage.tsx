@@ -2,12 +2,12 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Box, Typography, Button, Card, CardContent, CardActionArea,
-  Chip, Skeleton, IconButton, Tooltip, Breadcrumbs, Link,
+  Chip, Skeleton, IconButton, Tooltip, Breadcrumbs, Link, Avatar,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import EditIcon from '@mui/icons-material/Edit'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
-import LockIcon from '@mui/icons-material/Lock'
+import SchoolIcon from '@mui/icons-material/School'
 import type { Course, User } from '../types'
 import { courseDB } from '../db'
 import { useRecentSessions } from '../hooks/useCourseStore'
@@ -17,8 +17,8 @@ const LANG_LABELS: Record<string, string> = {
   lua: 'Lua', sqlite: 'SQLite', java: 'Java',
 }
 const LANG_COLORS: Record<string, string> = {
-  python: '#3572A5', javascript: '#f7df1e',
-  lua: '#000080', sqlite: '#003B57', java: '#b07219',
+  python: '#3572A5', javascript: '#f59e0b',
+  lua: '#6366f1', sqlite: '#0ea5e9', java: '#d97706',
 }
 
 interface Props {
@@ -59,16 +59,16 @@ export default function CoursePage({ user }: Props) {
 
   if (loading) {
     return (
-      <Box sx={{ maxWidth: 900, mx: 'auto', px: 2, py: 3 }}>
-        <Skeleton variant="text" width={300} height={40} sx={{ bgcolor: '#222' }} />
-        <Skeleton variant="rounded" height={120} sx={{ bgcolor: '#222', mt: 2 }} />
+      <Box sx={{ maxWidth: 900, mx: 'auto', px: 3, py: 4 }}>
+        <Skeleton variant="text" width={300} height={40} sx={{ borderRadius: 2 }} />
+        <Skeleton variant="rounded" height={120} sx={{ borderRadius: 3, mt: 2 }} />
       </Box>
     )
   }
 
   if (!course) {
     return (
-      <Box sx={{ maxWidth: 900, mx: 'auto', px: 2, py: 3, textAlign: 'center' }}>
+      <Box sx={{ maxWidth: 900, mx: 'auto', px: 3, py: 4, textAlign: 'center' }}>
         <Typography color="text.secondary">Курс не найден</Typography>
         <Button onClick={() => navigate('/')} sx={{ mt: 2 }}>На главную</Button>
       </Box>
@@ -78,53 +78,81 @@ export default function CoursePage({ user }: Props) {
   const isOwner = course.authorId === user.id
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto', px: 2, py: 3 }}>
+    <Box sx={{ maxWidth: 900, mx: 'auto', px: 3, py: 4 }}>
 
       {/* Навигация */}
-      <Breadcrumbs sx={{ mb: 2 }}>
+      <Breadcrumbs sx={{ mb: 3 }}>
         <Link
           component="button"
           underline="hover"
           color="inherit"
           onClick={() => navigate('/')}
-          sx={{ cursor: 'pointer' }}
+          sx={{ cursor: 'pointer', color: 'text.secondary', fontSize: 14 }}
         >
           Главная
         </Link>
-        <Typography color="text.primary">{course.title}</Typography>
+        <Typography color="text.primary" sx={{ fontSize: 14, fontWeight: 500 }}>
+          {course.title}
+        </Typography>
       </Breadcrumbs>
 
-      {/* Заголовок курса */}
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-            <IconButton size="small" onClick={() => navigate('/')} sx={{ color: '#666' }}>
-              <ArrowBackIcon />
-            </IconButton>
-            <Typography variant="h4" fontWeight="bold">{course.title}</Typography>
+      {/* Шапка курса */}
+      <Card sx={{ mb: 4, overflow: 'visible' }}>
+        <CardContent sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
+            <Box sx={{ display: 'flex', gap: 2.5, alignItems: 'flex-start', flexGrow: 1, minWidth: 0 }}>
+              <Box sx={{
+                width: 56, height: 56, borderRadius: '14px', flexShrink: 0,
+                background: 'linear-gradient(135deg, rgba(79,70,229,0.15) 0%, rgba(124,58,237,0.1) 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <SchoolIcon sx={{ fontSize: 28, color: 'primary.main' }} />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                  <IconButton size="small" onClick={() => navigate('/')} sx={{ color: 'text.secondary', mr: -0.5 }}>
+                    <ArrowBackIcon fontSize="small" />
+                  </IconButton>
+                  <Typography variant="h5" fontWeight={700}>{course.title}</Typography>
+                </Box>
+                <Typography color="text.secondary" sx={{ mb: 2, lineHeight: 1.6 }}>
+                  {course.description || 'Без описания'}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  <Chip
+                    size="small"
+                    label={`Автор: ${course.authorName}`}
+                    sx={{ bgcolor: 'rgba(79,70,229,0.07)', color: 'primary.main', fontWeight: 500 }}
+                  />
+                  <Chip
+                    size="small"
+                    label={`${course.labs.length} лаб.`}
+                    sx={{ bgcolor: 'rgba(79,70,229,0.07)', color: 'primary.main', fontWeight: 500 }}
+                  />
+                </Box>
+              </Box>
+            </Box>
+            {isOwner && (
+              <Button
+                variant="outlined"
+                startIcon={<EditIcon />}
+                onClick={() => navigate(`/courses/${course.id}/edit`)}
+                sx={{ flexShrink: 0 }}
+              >
+                Редактировать
+              </Button>
+            )}
           </Box>
-          <Typography color="text.secondary" sx={{ ml: 5 }}>
-            {course.description || 'Без описания'}
-          </Typography>
-          <Box sx={{ ml: 5, mt: 1, display: 'flex', gap: 1 }}>
-            <Chip size="small" label={`Автор: ${course.authorName}`} sx={{ bgcolor: '#1e1e1e' }} />
-            <Chip size="small" label={`${course.labs.length} лаб.`} sx={{ bgcolor: '#1e1e1e' }} />
-          </Box>
-        </Box>
-        {isOwner && (
-          <Button
-            variant="outlined"
-            startIcon={<EditIcon />}
-            onClick={() => navigate(`/courses/${course.id}/edit`)}
-          >
-            Редактировать
-          </Button>
-        )}
-      </Box>
+        </CardContent>
+      </Card>
 
       {/* Список лабораторных */}
+      <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
+        Лабораторные работы
+      </Typography>
+
       {course.labs.length === 0 ? (
-        <Card sx={{ bgcolor: '#141414', border: '1px dashed #333' }}>
+        <Card sx={{ border: '2px dashed', borderColor: 'divider', boxShadow: 'none', bgcolor: 'transparent' }}>
           <CardContent sx={{ py: 5, textAlign: 'center' }}>
             <Typography color="text.secondary">В этом курсе пока нет лабораторных</Typography>
             {isOwner && (
@@ -135,37 +163,37 @@ export default function CoursePage({ user }: Props) {
           </CardContent>
         </Card>
       ) : (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           {course.labs
             .slice()
             .sort((a, b) => a.order - b.order)
             .map((lab, idx) => (
               <Card key={lab.id} sx={{
-                bgcolor: '#141414', border: '1px solid #2a2a2a',
-                transition: 'border-color 0.2s',
-                '&:hover': { borderColor: '#444' },
+                transition: 'box-shadow 0.2s, transform 0.15s',
+                '&:hover': {
+                  boxShadow: '0 6px 20px rgba(0,0,0,0.1)',
+                  transform: 'translateY(-1px)',
+                },
               }}>
                 <CardActionArea onClick={() => handleStartLab(lab.id)}>
-                  <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2.5, py: 2 }}>
 
                     {/* Номер */}
-                    <Box sx={{
-                      width: 36, height: 36, borderRadius: '50%',
-                      bgcolor: '#1e1e1e', border: '1px solid #333',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0,
+                    <Avatar sx={{
+                      width: 38, height: 38, borderRadius: '10px', flexShrink: 0,
+                      bgcolor: 'rgba(79,70,229,0.08)',
+                      color: 'primary.main', fontWeight: 700, fontSize: 14,
                     }}>
-                      <Typography variant="body2" fontWeight="bold" color="text.secondary">
-                        {idx + 1}
-                      </Typography>
-                    </Box>
+                      {idx + 1}
+                    </Avatar>
 
                     {/* Инфо */}
                     <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                      <Typography fontWeight="bold" noWrap>{lab.title}</Typography>
+                      <Typography fontWeight={600} noWrap color="text.primary">{lab.title}</Typography>
                       <Typography variant="body2" color="text.secondary" sx={{
                         display: '-webkit-box', WebkitLineClamp: 1,
                         WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        mt: 0.25,
                       }}>
                         {lab.description || 'Без описания'}
                       </Typography>
@@ -177,23 +205,33 @@ export default function CoursePage({ user }: Props) {
                         size="small"
                         label={LANG_LABELS[lab.language] ?? lab.language}
                         sx={{
-                          bgcolor: `${LANG_COLORS[lab.language]}22`,
-                          color: LANG_COLORS[lab.language] ?? '#aaa',
-                          border: `1px solid ${LANG_COLORS[lab.language] ?? '#444'}44`,
+                          bgcolor: `${LANG_COLORS[lab.language] ?? '#64748b'}15`,
+                          color: LANG_COLORS[lab.language] ?? '#64748b',
+                          border: `1px solid ${LANG_COLORS[lab.language] ?? '#64748b'}30`,
+                          fontWeight: 600,
                         }}
                       />
                       {lab.testCases.length > 0 && (
-                        <Chip size="small" label={`${lab.testCases.length} тестов`} sx={{ bgcolor: '#1e1e1e' }} />
+                        <Chip
+                          size="small"
+                          label={`${lab.testCases.length} тестов`}
+                          sx={{ bgcolor: 'rgba(5,150,105,0.08)', color: 'success.main', fontWeight: 500 }}
+                        />
                       )}
                     </Box>
 
-                    {/* Кнопка запуска */}
+                    {/* Кнопка */}
                     <Tooltip title="Открыть лабораторную">
                       <IconButton
                         size="small"
                         color="primary"
                         disabled={startingLab === lab.id}
                         onClick={e => { e.stopPropagation(); handleStartLab(lab.id) }}
+                        sx={{
+                          bgcolor: 'rgba(79,70,229,0.08)',
+                          '&:hover': { bgcolor: 'rgba(79,70,229,0.15)' },
+                          flexShrink: 0,
+                        }}
                       >
                         <PlayArrowIcon />
                       </IconButton>

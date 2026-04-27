@@ -17,7 +17,7 @@ export default function ParticipantList({ participants, currentUserId }: Props) 
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-      <Typography variant="caption" sx={{ color: '#555', mr: 0.5 }}>
+      <Typography variant="caption" sx={{ color: 'text.secondary', mr: 0.5 }}>
         {participants.length}
       </Typography>
       {sorted.slice(0, 6).map((p, i) => (
@@ -45,7 +45,7 @@ export default function ParticipantList({ participants, currentUserId }: Props) 
       ))}
       {participants.length > 6 && (
         <Tooltip title={`Ещё ${participants.length - 6} участников`}>
-          <Avatar sx={{ width: 28, height: 28, bgcolor: '#333', fontSize: 11, ml: -0.75 }}>
+          <Avatar sx={{ width: 28, height: 28, bgcolor: 'action.selected', color: 'text.secondary', fontSize: 11, ml: -0.75 }}>
             +{participants.length - 6}
           </Avatar>
         </Tooltip>

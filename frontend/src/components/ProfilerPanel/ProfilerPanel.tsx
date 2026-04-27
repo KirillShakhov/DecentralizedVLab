@@ -50,7 +50,7 @@ function Histogram({ times }: { times: number[] }) {
               <Box sx={{
                 flex: 1,
                 height: `${Math.max(height, count > 0 ? 4 : 0)}%`,
-                bgcolor: isP95 ? '#ff9800' : '#2196f3',
+                bgcolor: isP95 ? 'warning.main' : 'primary.main',
                 borderRadius: '2px 2px 0 0',
                 opacity: 0.85,
                 transition: 'opacity 0.1s',
@@ -85,8 +85,8 @@ function CompareRow({ label, wasm, server, highlight }: {
       borderRadius: 1,
     }}>
       <Typography variant="body2" color="text.secondary">{label}</Typography>
-      <Typography variant="body2" fontWeight={highlight ? 'bold' : 'normal'} sx={{ color: '#4caf50' }}>{wasm}</Typography>
-      <Typography variant="body2" sx={{ color: '#f44336' }}>{server}</Typography>
+      <Typography variant="body2" fontWeight={highlight ? 'bold' : 'normal'} sx={{ color: 'success.main' }}>{wasm}</Typography>
+      <Typography variant="body2" sx={{ color: 'error.main' }}>{server}</Typography>
     </Box>
   )
 }
@@ -160,15 +160,15 @@ export default function ProfilerPanel({
       maxWidth="sm"
       fullWidth
       PaperProps={{
-        sx: { bgcolor: '#141414', border: '1px solid #2a2a2a', borderRadius: 2 }
+        sx: { borderRadius: 3 }
       }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 1 }}>
-        <SpeedIcon sx={{ color: '#2196f3' }} />
-        <Typography variant="h6" fontWeight="bold" sx={{ flexGrow: 1 }}>
+        <SpeedIcon sx={{ color: 'primary.main' }} />
+        <Typography variant="h6" fontWeight={700} sx={{ flexGrow: 1 }}>
           Профилировщик производительности
         </Typography>
-        <IconButton size="small" onClick={onClose} sx={{ color: '#555' }}>
+        <IconButton size="small" onClick={onClose} sx={{ color: 'text.secondary' }}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>
@@ -225,7 +225,7 @@ export default function ProfilerPanel({
             {/* Гистограмма */}
             <Histogram times={result.times} />
 
-            <Divider sx={{ borderColor: '#2a2a2a' }} />
+            <Divider />
 
             {/* Таблица сравнения */}
             <Box>
@@ -261,8 +261,8 @@ export default function ProfilerPanel({
 
               {speedup && (
                 <Box sx={{
-                  mt: 1.5, p: 1.5, bgcolor: 'rgba(76,175,80,0.08)',
-                  border: '1px solid rgba(76,175,80,0.2)', borderRadius: 1,
+                  mt: 1.5, p: 1.5, bgcolor: 'rgba(5,150,105,0.06)',
+                  border: '1px solid rgba(5,150,105,0.2)', borderRadius: 2,
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 }}>
                   <Box>
@@ -277,24 +277,24 @@ export default function ProfilerPanel({
                   </Box>
                   <Chip
                     label={`${speedup}x`}
-                    sx={{ bgcolor: '#1b5e20', color: '#a5d6a7', fontWeight: 'bold', fontSize: 16, height: 36 }}
+                    sx={{ bgcolor: 'rgba(5,150,105,0.12)', color: 'success.main', fontWeight: 700, fontSize: 16, height: 36 }}
                   />
                 </Box>
               )}
             </Box>
 
-            <Divider sx={{ borderColor: '#2a2a2a' }} />
+            <Divider />
 
             {/* Мета */}
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              <Chip size="small" label={`${result.iterations} итераций`} sx={{ bgcolor: '#1a1a1a' }} />
-              <Chip size="small" label={result.language.toUpperCase()} sx={{ bgcolor: '#1a1a1a' }} />
+              <Chip size="small" label={`${result.iterations} итераций`} />
+              <Chip size="small" label={result.language.toUpperCase()} />
               {result.networkRtt != null && (
-                <Chip size="small" label={`RTT: ${result.networkRtt} мс`} sx={{ bgcolor: '#1a1a1a' }} />
+                <Chip size="small" label={`RTT: ${result.networkRtt} мс`} />
               )}
               <Chip size="small"
                 label={new Date(result.timestamp).toLocaleTimeString('ru')}
-                sx={{ bgcolor: '#1a1a1a', ml: 'auto' }}
+                sx={{ ml: 'auto' }}
               />
             </Box>
           </>
@@ -311,7 +311,7 @@ export default function ProfilerPanel({
         >
           {copied ? 'Скопировано!' : 'Копировать как Markdown'}
         </Button>
-        <Button onClick={onClose} sx={{ color: '#666' }}>Закрыть</Button>
+        <Button onClick={onClose} color="inherit">Закрыть</Button>
       </DialogActions>
     </Dialog>
   )

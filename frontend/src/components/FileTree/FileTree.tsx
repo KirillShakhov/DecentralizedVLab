@@ -5,7 +5,6 @@ import {
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
-import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 
@@ -63,27 +62,36 @@ export default function FileTree({
   return (
     <Box sx={{
       display: 'flex', flexDirection: 'column',
-      height: '100%', borderRight: '1px solid #2a2a2a',
-      bgcolor: '#0d0d0d', minWidth: 0,
+      height: '100%', borderRight: '1px solid',
+      borderColor: 'divider',
+      bgcolor: '#f8fafc', minWidth: 0,
     }}>
       {/* Заголовок */}
       <Box sx={{
         px: 1.5, py: 1,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderBottom: '1px solid #2a2a2a', flexShrink: 0,
+        borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0,
+        bgcolor: '#f1f5f9',
       }}>
-        <Typography variant="caption" sx={{ color: '#666', fontWeight: 'bold', letterSpacing: 1, textTransform: 'uppercase' }}>
+        <Typography variant="caption" sx={{
+          color: 'text.secondary', fontWeight: 700,
+          letterSpacing: 0.8, textTransform: 'uppercase', fontSize: 10,
+        }}>
           Файлы
         </Typography>
         <Tooltip title="Новый файл">
-          <IconButton size="small" onClick={startAdding} sx={{ color: '#555', '&:hover': { color: '#fff' } }}>
-            <AddIcon fontSize="small" />
+          <IconButton
+            size="small"
+            onClick={startAdding}
+            sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main', bgcolor: 'rgba(79,70,229,0.08)' } }}
+          >
+            <AddIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </Tooltip>
       </Box>
 
       {/* Список файлов */}
-      <List dense disablePadding sx={{ flexGrow: 1, overflow: 'auto' }}>
+      <List dense disablePadding sx={{ flexGrow: 1, overflow: 'auto', px: 0.5, py: 0.5 }}>
         {fileList.map(path => {
           const isActive = path === activeFile
           const isReadOnly = readOnlyFiles.includes(path)
@@ -93,13 +101,18 @@ export default function FileTree({
               selected={isActive}
               onClick={() => onSelect(path)}
               sx={{
-                px: 1.5, py: 0.5,
-                borderLeft: isActive ? '2px solid #2196f3' : '2px solid transparent',
-                '&.Mui-selected': { bgcolor: '#1a2a3a', '&:hover': { bgcolor: '#1a2a3a' } },
+                px: 1.25, py: 0.5, borderRadius: '6px',
+                borderLeft: isActive ? '2px solid' : '2px solid transparent',
+                borderLeftColor: isActive ? 'primary.main' : 'transparent',
+                '&.Mui-selected': {
+                  bgcolor: 'rgba(79,70,229,0.08)',
+                  '&:hover': { bgcolor: 'rgba(79,70,229,0.1)' },
+                },
                 '&:hover .delete-btn': { opacity: 1 },
+                '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' },
               }}
             >
-              <ListItemIcon sx={{ minWidth: 28, fontSize: 14 }}>
+              <ListItemIcon sx={{ minWidth: 26, fontSize: 13 }}>
                 {getFileIcon(path)}
               </ListItemIcon>
               <ListItemText
@@ -107,7 +120,11 @@ export default function FileTree({
                 primaryTypographyProps={{
                   variant: 'body2',
                   noWrap: true,
-                  sx: { color: isActive ? '#90caf9' : '#bbb', fontSize: 13 },
+                  sx: {
+                    color: isActive ? 'primary.main' : 'text.primary',
+                    fontSize: 12.5, fontWeight: isActive ? 600 : 400,
+                    fontFamily: '"JetBrains Mono", monospace',
+                  },
                 }}
               />
               {!isReadOnly && (
@@ -117,12 +134,12 @@ export default function FileTree({
                     size="small"
                     onClick={e => {
                       e.stopPropagation()
-                      if (fileList.length === 1) return // нельзя удалить последний
+                      if (fileList.length === 1) return
                       if (confirm(`Удалить файл "${path}"?`)) onDelete(path)
                     }}
                     sx={{
                       opacity: 0, transition: 'opacity 0.15s',
-                      color: '#555', '&:hover': { color: '#f44336' },
+                      color: 'text.secondary', '&:hover': { color: 'error.main' },
                       p: 0.25,
                     }}
                   >
@@ -134,9 +151,8 @@ export default function FileTree({
           )
         })}
 
-        {/* Форма добавления нового файла */}
         {adding && (
-          <Box sx={{ px: 1.5, py: 0.75, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Box sx={{ px: 1, py: 0.75, display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <TextField
               inputRef={inputRef}
               size="small"
@@ -150,12 +166,12 @@ export default function FileTree({
               error={!!nameError}
               helperText={nameError}
               inputProps={{ style: { fontSize: 12, padding: '4px 8px', fontFamily: 'monospace' } }}
-              sx={{ flexGrow: 1, '& .MuiOutlinedInput-root': { bgcolor: '#1a1a1a' } }}
+              sx={{ flexGrow: 1 }}
             />
-            <IconButton size="small" onClick={confirmAdd} sx={{ color: '#4caf50' }}>
+            <IconButton size="small" onClick={confirmAdd} sx={{ color: 'success.main' }}>
               <CheckIcon fontSize="small" />
             </IconButton>
-            <IconButton size="small" onClick={cancelAdd} sx={{ color: '#666' }}>
+            <IconButton size="small" onClick={cancelAdd} sx={{ color: 'text.secondary' }}>
               <CloseIcon fontSize="small" />
             </IconButton>
           </Box>

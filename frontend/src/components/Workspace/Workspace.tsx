@@ -72,7 +72,6 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
   const { result: profilerResult, running: profilerRunning, progress: profilerProgress, runBenchmark } =
     useProfiler(getFiles, compiler, currentLang);
 
-  // Синхронизируем вкладки с fileList
   useEffect(() => {
     if (fileList.length === 0) return;
 
@@ -88,8 +87,6 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
       return merged.length > 0 ? merged : [fileList[0]];
     });
   }, [fileList, activeFile]);
-
-  // ── Компилятор ───────────────────────────────────────────────────────────
 
   const checkCompiler = useCallback(async (langId: string) => {
     if (!langId || !COMPILERS[langId]) return;
@@ -165,8 +162,6 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
     }
   };
 
-  // ── Вкладки ──────────────────────────────────────────────────────────────
-
   const openTab = (path: string) => {
     setActiveFile(path);
     setOpenFiles(prev => prev.includes(path) ? prev : [...prev, path]);
@@ -200,61 +195,75 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
     <>
     <Box sx={{
       display: 'flex', flexDirection: 'column',
-      height: 'calc(100vh - 64px)', bgcolor: '#0a0a0a', overflow: 'hidden',
+      height: 'calc(100vh - 60px)', bgcolor: 'background.default', overflow: 'hidden',
     }}>
 
-      {/* ── Панель управления ── */}
+      {/* Панель управления */}
       <Paper elevation={0} sx={{
         px: 2, py: 0.75, flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        bgcolor: '#141414', borderRadius: 0, borderBottom: '1px solid #2a2a2a',
+        bgcolor: 'background.paper', borderRadius: 0,
+        borderBottom: '1px solid', borderColor: 'divider',
+        boxShadow: '0 1px 0 rgba(0,0,0,0.05)',
       }}>
         {/* Левая часть */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           {lab && (
             <>
-              <Typography variant="body2" fontWeight="bold" color="text.secondary" noWrap sx={{ maxWidth: 200 }}>
+              <Typography variant="body2" fontWeight={600} color="text.secondary" noWrap sx={{ maxWidth: 200 }}>
                 {lab.title}
               </Typography>
-              <Divider orientation="vertical" flexItem sx={{ bgcolor: '#333' }} />
+              <Divider orientation="vertical" flexItem sx={{ borderColor: 'divider' }} />
             </>
           )}
 
-          {/* Код комнаты + share */}
           <Tooltip title="Скопировать ссылку на сессию">
             <Chip
               label={roomCode}
               size="small"
-              icon={<ShareIcon sx={{ fontSize: '14px !important' }} />}
+              icon={<ShareIcon sx={{ fontSize: '13px !important' }} />}
               onClick={handleShare}
               sx={{
-                bgcolor: '#1a1a1a', color: '#666', border: '1px solid #2a2a2a',
-                fontFamily: 'monospace', cursor: 'pointer',
-                '&:hover': { bgcolor: '#222', color: '#aaa' },
+                bgcolor: 'rgba(79,70,229,0.07)',
+                color: 'primary.main',
+                border: '1px solid rgba(79,70,229,0.2)',
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: 11, fontWeight: 600,
+                cursor: 'pointer',
+                '&:hover': { bgcolor: 'rgba(79,70,229,0.12)' },
               }}
             />
           </Tooltip>
 
-          <Divider orientation="vertical" flexItem sx={{ bgcolor: '#2a2a2a' }} />
+          <Divider orientation="vertical" flexItem sx={{ borderColor: 'divider' }} />
 
           <FormControl size="small" sx={{ minWidth: 170 }}>
-            <InputLabel sx={{ color: '#666' }}>Среда</InputLabel>
+            <InputLabel sx={{ color: 'text.secondary', fontSize: 13 }}>Среда</InputLabel>
             <Select
               value={currentLang} label="Среда" onChange={handleLangChange}
               disabled={!!lab}
-              sx={{ color: '#fff', '.MuiOutlinedInput-notchedOutline': { borderColor: '#2a2a2a' }, bgcolor: '#1a1a1a' }}
+              sx={{
+                fontSize: 13,
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+              }}
             >
               <MenuItem value=""><em>Выбрать</em></MenuItem>
               {Object.values(COMPILERS).map((c: any) => (
-                <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                <MenuItem key={c.id} value={c.id} sx={{ fontSize: 13 }}>{c.name}</MenuItem>
               ))}
             </Select>
           </FormControl>
 
           {lab?.description && (
             <Tooltip title={showDescription ? 'Скрыть задание' : 'Показать задание'}>
-              <IconButton size="small" onClick={() => setShowDescription(s => !s)}
-                sx={{ color: showDescription ? '#2196f3' : '#555' }}>
+              <IconButton
+                size="small"
+                onClick={() => setShowDescription(s => !s)}
+                sx={{
+                  color: showDescription ? 'primary.main' : 'text.secondary',
+                  bgcolor: showDescription ? 'rgba(79,70,229,0.08)' : 'transparent',
+                }}
+              >
                 <DescriptionIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -262,65 +271,81 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
 
           {lab && (
             <Tooltip title="Сбросить к шаблону">
-              <IconButton size="small" onClick={handleReset} sx={{ color: '#555', '&:hover': { color: '#fff' } }}>
+              <IconButton
+                size="small"
+                onClick={handleReset}
+                sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}
+              >
                 <RestartAltIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           )}
 
-          {/* Профилировщик */}
           <Tooltip title="Профилировщик WASM (бенчмарк)">
             <IconButton
               size="small"
               onClick={() => setShowProfiler(true)}
               disabled={!isEngineReady}
-              sx={{ color: isEngineReady ? '#ff9800' : '#333', '&:hover': { color: '#ffb74d' } }}
+              sx={{
+                color: isEngineReady ? '#d97706' : 'text.disabled',
+                '&:hover': { color: '#b45309', bgcolor: 'rgba(217,119,6,0.08)' },
+              }}
             >
               <SpeedIcon fontSize="small" />
             </IconButton>
           </Tooltip>
         </Box>
 
-        {/* Правая часть: участники + статус движка */}
+        {/* Правая часть */}
         <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
           <ParticipantList participants={participants} currentUserId={user?.id} />
 
-          {participants.length > 0 && <Divider orientation="vertical" flexItem sx={{ bgcolor: '#333' }} />}
+          {participants.length > 0 && <Divider orientation="vertical" flexItem sx={{ borderColor: 'divider' }} />}
 
           {status.isDownloading && (
-            <Chip icon={<CircularProgress size={12} color="inherit" />}
-              label={`${status.progress}%`} color="primary" variant="outlined" size="small" />
+            <Chip
+              icon={<CircularProgress size={12} color="inherit" />}
+              label={`${status.progress}%`}
+              color="primary" variant="outlined" size="small"
+            />
           )}
           {currentLang && !status.isDownloaded && !status.isDownloading && (
-            <Button size="small" variant="contained" startIcon={<CloudDownloadIcon />}
-              onClick={handleDownload} sx={{ bgcolor: '#2e7d32', py: 0.5 }}>
+            <Button
+              size="small" variant="contained" color="success"
+              startIcon={<CloudDownloadIcon />}
+              onClick={handleDownload}
+              sx={{ py: 0.5 }}
+            >
               Скачать движок
             </Button>
           )}
           {status.isDownloaded && (
-            <Chip icon={<CloudDoneIcon sx={{ color: '#4caf50 !important' }} />}
+            <Chip
+              icon={<CloudDoneIcon sx={{ fontSize: '14px !important' }} />}
               label="Offline" variant="outlined" size="small"
-              sx={{ color: '#4caf50', borderColor: '#4caf50' }} />
+              color="success"
+            />
           )}
         </Box>
       </Paper>
 
-      {/* ── Описание задания (сворачиваемое) ── */}
+      {/* Описание задания */}
       {lab?.description && (
         <Collapse in={showDescription}>
           <Box sx={{
-            px: 2, py: 1, bgcolor: '#0f1a2a',
-            borderBottom: '1px solid #1a2a3a',
+            px: 2.5, py: 1.5,
+            bgcolor: 'rgba(79,70,229,0.04)',
+            borderBottom: '1px solid rgba(79,70,229,0.12)',
             maxHeight: 120, overflow: 'auto',
           }}>
-            <Typography variant="body2" color="#90caf9" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+            <Typography variant="body2" color="primary.main" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7, opacity: 0.85 }}>
               {lab.description}
             </Typography>
           </Box>
         </Collapse>
       )}
 
-      {/* ── Основная область ── */}
+      {/* Основная область */}
       <Box sx={{ display: 'flex', flexGrow: 1, minHeight: 0 }}>
 
         {/* FileTree */}
@@ -336,10 +361,12 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
         </Box>
 
         {/* Editor */}
-        <Box sx={{ flexGrow: 1, minWidth: 0, borderRight: '1px solid #2a2a2a' }}>
+        <Box sx={{ flexGrow: 1, minWidth: 0, borderRight: '1px solid rgba(0,0,0,0.1)' }}>
           {!currentLang ? (
             <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#1e1e1e' }}>
-              <Typography color="text.secondary">Выберите язык программирования</Typography>
+              <Typography color="#666" sx={{ fontFamily: 'monospace', fontSize: 13 }}>
+                Выберите язык программирования
+              </Typography>
             </Box>
           ) : (
             <MultiFileEditor
@@ -355,10 +382,9 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
         {/* Правая колонка: Terminal + TestPanel */}
         <Box sx={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
-          {/* Terminal */}
           <Box sx={{
-            flexGrow: 1, bgcolor: '#000', minHeight: 0,
-            borderBottom: hasTests ? '1px solid #2a2a2a' : 'none',
+            flexGrow: 1, minHeight: 0,
+            borderBottom: hasTests ? '1px solid rgba(0,0,0,0.15)' : 'none',
           }}>
             <Terminal
               output={output}
@@ -369,7 +395,6 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
             />
           </Box>
 
-          {/* TestPanel */}
           {hasTests && (
             <Box sx={{ flexShrink: 0, maxHeight: '45%', display: 'flex', flexDirection: 'column' }}>
               <TestPanel
@@ -386,7 +411,6 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
       </Box>
     </Box>
 
-      {/* Профилировщик — монтируется вне основного Box как Portal (MUI Dialog) */}
       <ProfilerPanel
         open={showProfiler}
         onClose={() => setShowProfiler(false)}
@@ -397,7 +421,6 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
         onRunBenchmark={runBenchmark}
       />
 
-      {/* Snackbar уведомления */}
       <Snackbar
         open={!!snackbar}
         autoHideDuration={2500}

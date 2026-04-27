@@ -73,7 +73,6 @@ export default function CourseEditorPage({ user }: Props) {
   const [error, setError] = useState('')
   const [expandedLab, setExpandedLab] = useState<string | false>(false)
 
-  // Загрузка существующего курса
   useEffect(() => {
     if (!courseId) return
     courseDB.get(courseId).then(c => {
@@ -84,8 +83,6 @@ export default function CourseEditorPage({ user }: Props) {
       setLabs(c.labs)
     })
   }, [courseId])
-
-  // ─── Курс ────────────────────────────────────────────────────────────────
 
   const handleExport = () => {
     const course: Course = {
@@ -135,8 +132,6 @@ export default function CourseEditorPage({ user }: Props) {
     }
   }
 
-  // ─── Лабораторные ────────────────────────────────────────────────────────
-
   const addLab = () => {
     const lab = newLab(labs.length)
     setLabs(prev => [...prev, lab])
@@ -158,8 +153,6 @@ export default function CourseEditorPage({ user }: Props) {
       files: [{ path: `main.${ext}`, content: DEFAULT_TEMPLATES[lang] ?? '', readOnly: false }],
     })
   }
-
-  // ─── Файлы ───────────────────────────────────────────────────────────────
 
   const updateFileContent = (labId: string, fileIdx: number, content: string) => {
     setLabs(prev => prev.map(l => {
@@ -208,8 +201,6 @@ export default function CourseEditorPage({ user }: Props) {
     }))
   }
 
-  // ─── Тест-кейсы ──────────────────────────────────────────────────────────
-
   const addTestCase = (labId: string) => {
     setLabs(prev => prev.map(l =>
       l.id === labId ? { ...l, testCases: [...l.testCases, newTestCase()] } : l
@@ -229,40 +220,31 @@ export default function CourseEditorPage({ user }: Props) {
     ))
   }
 
-  // ─── Render ──────────────────────────────────────────────────────────────
-
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto', px: 2, py: 3 }}>
+    <Box sx={{ maxWidth: 900, mx: 'auto', px: 3, py: 4 }}>
 
       <Breadcrumbs sx={{ mb: 2 }}>
-        <Link component="button" underline="hover" color="inherit" onClick={() => navigate('/')} sx={{ cursor: 'pointer' }}>
+        <Link component="button" underline="hover" color="inherit" onClick={() => navigate('/')} sx={{ cursor: 'pointer', color: 'text.secondary', fontSize: 14 }}>
           Главная
         </Link>
-        <Typography color="text.primary">{isEdit ? 'Редактирование' : 'Новый курс'}</Typography>
+        <Typography color="text.primary" sx={{ fontSize: 14, fontWeight: 500 }}>
+          {isEdit ? 'Редактирование' : 'Новый курс'}
+        </Typography>
       </Breadcrumbs>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" fontWeight="bold">
+        <Typography variant="h5" fontWeight={700}>
           {isEdit ? 'Редактировать курс' : 'Создать курс'}
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1.5 }}>
           {isEdit && (
             <Tooltip title="Скачать курс как JSON для импорта на другом устройстве">
-              <Button
-                variant="outlined"
-                startIcon={<FileDownloadIcon />}
-                onClick={handleExport}
-              >
+              <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExport}>
                 Экспорт JSON
               </Button>
             </Tooltip>
           )}
-          <Button
-            variant="contained"
-            startIcon={<SaveIcon />}
-            onClick={handleSave}
-            disabled={saving}
-          >
+          <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSave} disabled={saving}>
             {saving ? 'Сохранение...' : 'Сохранить'}
           </Button>
         </Box>
@@ -270,9 +252,9 @@ export default function CourseEditorPage({ user }: Props) {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      {/* Основная инфа о курсе */}
-      <Card sx={{ bgcolor: '#141414', border: '1px solid #2a2a2a', mb: 3 }}>
-        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* Основная информация */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 3 }}>
           <TextField
             label="Название курса"
             fullWidth
@@ -299,19 +281,24 @@ export default function CourseEditorPage({ user }: Props) {
 
       {/* Лабораторные */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6" fontWeight="bold">
-          Лабораторные работы
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="h6" fontWeight={700}>
+            Лабораторные работы
+          </Typography>
           {labs.length > 0 && (
-            <Chip label={labs.length} size="small" sx={{ ml: 1, bgcolor: '#1e3a5f', color: '#90caf9' }} />
+            <Chip
+              label={labs.length} size="small"
+              sx={{ bgcolor: 'rgba(79,70,229,0.1)', color: 'primary.main', fontWeight: 600, height: 20, fontSize: 11 }}
+            />
           )}
-        </Typography>
+        </Box>
         <Button variant="outlined" startIcon={<AddIcon />} onClick={addLab} size="small">
           Добавить лабораторную
         </Button>
       </Box>
 
       {labs.length === 0 && (
-        <Card sx={{ bgcolor: '#141414', border: '1px dashed #333', mb: 2 }}>
+        <Card sx={{ mb: 2, border: '2px dashed', borderColor: 'divider', boxShadow: 'none', bgcolor: 'transparent' }}>
           <CardContent sx={{ py: 4, textAlign: 'center' }}>
             <Typography color="text.secondary">
               Добавьте хотя бы одну лабораторную работу
@@ -325,16 +312,25 @@ export default function CourseEditorPage({ user }: Props) {
           key={lab.id}
           expanded={expandedLab === lab.id}
           onChange={(_, expanded) => setExpandedLab(expanded ? lab.id : false)}
-          sx={{ bgcolor: '#141414', border: '1px solid #2a2a2a', mb: 1, '&:before': { display: 'none' } }}
+          sx={{
+            mb: 1.5, borderRadius: '12px !important', border: '1px solid',
+            borderColor: 'divider', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+            '&:before': { display: 'none' },
+            '&.Mui-expanded': { boxShadow: '0 4px 12px rgba(0,0,0,0.08)' },
+          }}
         >
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ borderRadius: '12px' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%', mr: 1 }}>
-              <DragIndicatorIcon sx={{ color: '#444', flexShrink: 0 }} />
-              <Typography fontWeight="medium" sx={{ flexGrow: 1 }} noWrap>
+              <DragIndicatorIcon sx={{ color: 'text.disabled', flexShrink: 0 }} />
+              <Typography fontWeight={600} sx={{ flexGrow: 1, color: 'text.primary' }} noWrap>
                 {idx + 1}. {lab.title || 'Без названия'}
               </Typography>
-              <Chip size="small" label={COMPILERS.find(c => c.id === lab.language)?.label ?? lab.language} sx={{ bgcolor: '#1e1e1e' }} />
-              <Chip size="small" label={`${lab.testCases.length} тестов`} sx={{ bgcolor: '#1e1e1e' }} />
+              <Chip size="small" label={COMPILERS.find(c => c.id === lab.language)?.label ?? lab.language}
+                sx={{ bgcolor: 'rgba(79,70,229,0.08)', color: 'primary.main', fontWeight: 500 }}
+              />
+              <Chip size="small" label={`${lab.testCases.length} тестов`}
+                sx={{ bgcolor: 'rgba(5,150,105,0.08)', color: 'success.main', fontWeight: 500 }}
+              />
               <Tooltip title="Удалить лабораторную">
                 <IconButton
                   size="small"
@@ -347,9 +343,8 @@ export default function CourseEditorPage({ user }: Props) {
             </Box>
           </AccordionSummary>
 
-          <AccordionDetails sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <AccordionDetails sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0 }}>
 
-            {/* Основные поля лабы */}
             <Box sx={{ display: 'flex', gap: 2 }}>
               <TextField
                 label="Название"
@@ -360,11 +355,7 @@ export default function CourseEditorPage({ user }: Props) {
               />
               <FormControl sx={{ minWidth: 160 }}>
                 <InputLabel>Язык</InputLabel>
-                <Select
-                  value={lab.language}
-                  label="Язык"
-                  onChange={e => changeLang(lab.id, e.target.value)}
-                >
+                <Select value={lab.language} label="Язык" onChange={e => changeLang(lab.id, e.target.value)}>
                   {COMPILERS.map(c => (
                     <MenuItem key={c.id} value={c.id}>{c.label}</MenuItem>
                   ))}
@@ -382,50 +373,44 @@ export default function CourseEditorPage({ user }: Props) {
               placeholder="Опишите задание для студентов. Поддерживается Markdown."
             />
 
-            {/* Файлы лабораторной */}
+            {/* Файлы */}
             <Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                <Typography variant="body1" fontWeight="medium">Файлы</Typography>
+                <Typography variant="body1" fontWeight={600}>Файлы</Typography>
                 <Button size="small" startIcon={<AddIcon />} onClick={() => addFileToLab(lab.id)}>
                   Добавить файл
                 </Button>
               </Box>
 
               {lab.files.map((file, fileIdx) => (
-                <Card key={fileIdx} sx={{ bgcolor: '#0d0d0d', border: '1px solid #2a2a2a', mb: 1.5 }}>
+                <Card key={fileIdx} sx={{ mb: 1.5, bgcolor: 'rgba(0,0,0,0.02)', boxShadow: 'none', border: '1px solid', borderColor: file.readOnly ? 'rgba(217,119,6,0.3)' : 'divider' }}>
                   <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                    {/* Строка с именем файла и управлением */}
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <TextField
                         size="small"
                         value={file.path}
                         onChange={e => updateFilePath(lab.id, fileIdx, e.target.value)}
-                        inputProps={{ style: { fontFamily: 'monospace', fontSize: 13 } }}
-                        sx={{ flexGrow: 1, '& .MuiOutlinedInput-root': { bgcolor: '#141414' } }}
+                        inputProps={{ style: { fontFamily: '"JetBrains Mono", monospace', fontSize: 13 } }}
+                        sx={{ flexGrow: 1 }}
                       />
                       <Tooltip title={file.readOnly ? 'Только чтение (студент не редактирует)' : 'Редактируемый файл'}>
                         <IconButton
                           size="small"
                           onClick={() => toggleFileReadOnly(lab.id, fileIdx)}
-                          sx={{ color: file.readOnly ? '#ff9800' : '#555' }}
+                          sx={{ color: file.readOnly ? 'warning.main' : 'text.secondary' }}
                         >
                           {file.readOnly ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}
                         </IconButton>
                       </Tooltip>
                       {lab.files.length > 1 && (
                         <Tooltip title="Удалить файл">
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => removeFileFromLab(lab.id, fileIdx)}
-                          >
+                          <IconButton size="small" color="error" onClick={() => removeFileFromLab(lab.id, fileIdx)}>
                             <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
                       )}
                     </Box>
 
-                    {/* Содержимое файла */}
                     <TextField
                       fullWidth
                       multiline
@@ -433,25 +418,19 @@ export default function CourseEditorPage({ user }: Props) {
                       value={file.content}
                       onChange={e => updateFileContent(lab.id, fileIdx, e.target.value)}
                       placeholder={file.readOnly ? 'Код-заготовка (студент видит, но не редактирует)' : 'Начальный код для студента'}
-                      inputProps={{ style: { fontFamily: 'monospace', fontSize: 13 } }}
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          bgcolor: '#0a0a0a',
-                          borderColor: file.readOnly ? '#ff980044' : undefined,
-                        },
-                      }}
+                      inputProps={{ style: { fontFamily: '"JetBrains Mono", monospace', fontSize: 13, lineHeight: 1.6 } }}
                     />
                   </CardContent>
                 </Card>
               ))}
             </Box>
 
-            <Divider sx={{ borderColor: '#2a2a2a' }} />
+            <Divider />
 
             {/* Тест-кейсы */}
             <Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                <Typography variant="body1" fontWeight="medium">Тест-кейсы</Typography>
+                <Typography variant="body1" fontWeight={600}>Тест-кейсы</Typography>
                 <Button size="small" startIcon={<AddIcon />} onClick={() => addTestCase(lab.id)}>
                   Добавить тест
                 </Button>
@@ -464,17 +443,17 @@ export default function CourseEditorPage({ user }: Props) {
               )}
 
               {lab.testCases.map((tc, tcIdx) => (
-                <Card key={tc.id} sx={{ bgcolor: '#0d0d0d', border: '1px solid #2a2a2a', mb: 1.5 }}>
+                <Card key={tc.id} sx={{ mb: 1.5, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
                   <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1, fontWeight: 500 }}>
                         Тест #{tcIdx + 1}
                       </Typography>
                       <Tooltip title={tc.isHidden ? 'Скрытый тест' : 'Открытый тест'}>
                         <IconButton
                           size="small"
                           onClick={() => updateTestCase(lab.id, tc.id, { isHidden: !tc.isHidden })}
-                          sx={{ color: tc.isHidden ? '#ff9800' : '#666' }}
+                          sx={{ color: tc.isHidden ? 'warning.main' : 'text.secondary' }}
                         >
                           {tc.isHidden ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
                         </IconButton>
@@ -504,7 +483,7 @@ export default function CourseEditorPage({ user }: Props) {
                         value={tc.input}
                         onChange={e => updateTestCase(lab.id, tc.id, { input: e.target.value })}
                         placeholder="Пусто, если программа не читает stdin"
-                        inputProps={{ style: { fontFamily: 'monospace', fontSize: 12 } }}
+                        inputProps={{ style: { fontFamily: '"JetBrains Mono", monospace', fontSize: 12 } }}
                       />
                       <TextField
                         label="Ожидаемый вывод (stdout)"
@@ -515,7 +494,7 @@ export default function CourseEditorPage({ user }: Props) {
                         value={tc.expectedOutput}
                         onChange={e => updateTestCase(lab.id, tc.id, { expectedOutput: e.target.value })}
                         placeholder="Точный вывод программы"
-                        inputProps={{ style: { fontFamily: 'monospace', fontSize: 12 } }}
+                        inputProps={{ style: { fontFamily: '"JetBrains Mono", monospace', fontSize: 12 } }}
                       />
                     </Box>
                   </CardContent>
@@ -527,13 +506,7 @@ export default function CourseEditorPage({ user }: Props) {
       ))}
 
       <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="contained"
-          size="large"
-          startIcon={<SaveIcon />}
-          onClick={handleSave}
-          disabled={saving}
-        >
+        <Button variant="contained" size="large" startIcon={<SaveIcon />} onClick={handleSave} disabled={saving}>
           {saving ? 'Сохранение...' : 'Сохранить курс'}
         </Button>
       </Box>

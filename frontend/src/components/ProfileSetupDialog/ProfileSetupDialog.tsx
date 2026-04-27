@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import {
-  Dialog, DialogTitle, DialogContent, DialogActions,
+  Dialog, DialogContent, DialogActions,
   TextField, Button, Typography, Box, Avatar,
 } from '@mui/material'
 import PersonIcon from '@mui/icons-material/Person'
@@ -32,23 +32,28 @@ export default function ProfileSetupDialog({ open, onConfirm }: Props) {
       open={open}
       maxWidth="xs"
       fullWidth
-      PaperProps={{ sx: { bgcolor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 2 } }}
+      PaperProps={{ sx: { borderRadius: 3, overflow: 'hidden' } }}
     >
-      <DialogTitle sx={{ pb: 0 }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, pt: 1 }}>
-          <Avatar sx={{ bgcolor: '#1976d2', width: 56, height: 56 }}>
-            <PersonIcon fontSize="large" />
-          </Avatar>
-          <Typography variant="h6" fontWeight="bold">
-            Добро пожаловать в В-Лабу
-          </Typography>
-          <Typography variant="body2" color="text.secondary" textAlign="center">
-            Введите имя, которое будут видеть другие участники в совместных сессиях
-          </Typography>
-        </Box>
-      </DialogTitle>
+      {/* Gradient header */}
+      <Box sx={{
+        background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+        py: 4, px: 3, textAlign: 'center',
+      }}>
+        <Avatar sx={{
+          bgcolor: 'rgba(255,255,255,0.2)', width: 60, height: 60, mx: 'auto', mb: 2,
+          backdropFilter: 'blur(10px)',
+        }}>
+          <PersonIcon fontSize="large" sx={{ color: '#fff' }} />
+        </Avatar>
+        <Typography variant="h6" fontWeight={700} sx={{ color: '#fff', mb: 0.5 }}>
+          Добро пожаловать в В-Лабу
+        </Typography>
+        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.75)', fontSize: 13 }}>
+          Введите имя, которое будут видеть другие участники
+        </Typography>
+      </Box>
 
-      <DialogContent sx={{ pt: 3 }}>
+      <DialogContent sx={{ pt: 3, pb: 1 }}>
         <TextField
           autoFocus
           fullWidth
@@ -60,19 +65,17 @@ export default function ProfileSetupDialog({ open, onConfirm }: Props) {
           error={!!error}
           helperText={error}
           inputProps={{ maxLength: 32 }}
-          sx={{
-            '& .MuiOutlinedInput-root': { borderColor: '#333' },
-          }}
         />
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, pb: 3 }}>
+      <DialogActions sx={{ px: 3, pb: 3, pt: 1.5 }}>
         <Button
           fullWidth
           variant="contained"
           size="large"
           onClick={handleSubmit}
           disabled={username.trim().length < 2}
+          sx={{ py: 1.25, fontSize: 15, fontWeight: 700, borderRadius: '10px' }}
         >
           Начать работу
         </Button>
