@@ -190,6 +190,7 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
   const readOnlyFiles = lab?.files?.filter(f => f.readOnly).map(f => f.path) ?? [];
   const hasTests = (lab?.testCases?.length ?? 0) > 0;
   const effectiveOpenFiles = openFiles.length > 0 ? openFiles : fileList.slice(0, 1);
+  const hasDescription = !!lab?.description;
 
   return (
     <>
@@ -254,7 +255,7 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
             </Select>
           </FormControl>
 
-          {lab?.description && (
+          {hasDescription && (
             <Tooltip title={showDescription ? 'Скрыть задание' : 'Показать задание'}>
               <IconButton
                 size="small"
@@ -329,22 +330,6 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
         </Box>
       </Paper>
 
-      {/* Описание задания */}
-      {lab?.description && (
-        <Collapse in={showDescription}>
-          <Box sx={{
-            px: 2.5, py: 1.5,
-            bgcolor: 'rgba(79,70,229,0.04)',
-            borderBottom: '1px solid rgba(79,70,229,0.12)',
-            maxHeight: 120, overflow: 'auto',
-          }}>
-            <Typography variant="body2" color="primary.main" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7, opacity: 0.85 }}>
-              {lab.description}
-            </Typography>
-          </Box>
-        </Collapse>
-      )}
-
       {/* Основная область */}
       <Box sx={{ display: 'flex', flexGrow: 1, minHeight: 0 }}>
 
@@ -361,10 +346,10 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
         </Box>
 
         {/* Editor */}
-        <Box sx={{ flexGrow: 1, minWidth: 0, borderRight: '1px solid rgba(0,0,0,0.1)' }}>
+        <Box sx={{ flexGrow: 1, minWidth: 0, borderRight: '1px solid', borderColor: 'divider' }}>
           {!currentLang ? (
-            <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#1e1e1e' }}>
-              <Typography color="#666" sx={{ fontFamily: 'monospace', fontSize: 13 }}>
+            <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default' }}>
+              <Typography color="text.disabled" sx={{ fontFamily: 'monospace', fontSize: 13 }}>
                 Выберите язык программирования
               </Typography>
             </Box>
@@ -379,8 +364,41 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
           )}
         </Box>
 
-        {/* Правая колонка: Terminal + TestPanel */}
-        <Box sx={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {/* Правая колонка: Задание + Terminal + TestPanel */}
+        <Box sx={{ width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+
+          {/* Описание задания */}
+          {hasDescription && (
+            <Collapse in={showDescription}>
+              <Box sx={{
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+                flexShrink: 0,
+              }}>
+                <Box sx={{
+                  px: 2, py: 1,
+                  display: 'flex', alignItems: 'center',
+                  borderBottom: '1px solid', borderColor: 'divider',
+                }}>
+                  <DescriptionIcon sx={{ fontSize: 13, color: 'primary.main', mr: 0.75 }} />
+                  <Typography variant="caption" fontWeight={700} color="primary.main"
+                    sx={{ textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
+                    Задание
+                  </Typography>
+                </Box>
+                <Box sx={{ px: 2, py: 1.5, maxHeight: '28vh', overflow: 'auto' }}>
+                  <Typography variant="body2" color="text.primary" sx={{
+                    whiteSpace: 'pre-wrap',
+                    lineHeight: 1.85,
+                    fontSize: '13px',
+                  }}>
+                    {lab!.description}
+                  </Typography>
+                </Box>
+              </Box>
+            </Collapse>
+          )}
 
           <Box sx={{
             flexGrow: 1, minHeight: 0,

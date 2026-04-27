@@ -1,6 +1,6 @@
 import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Box, CircularProgress, Typography, CssBaseline } from '@mui/material';
+import { Box, CircularProgress, Typography } from '@mui/material';
 import TopBar from './components/TopBar/TopBar';
 import Settings from './components/Settings/Settings';
 import ProfileSetupDialog from './components/ProfileSetupDialog/ProfileSetupDialog';
@@ -35,9 +35,7 @@ function App() {
 
     return (
         <Router>
-            <CssBaseline />
-
-            <ProfileSetupDialog
+                <ProfileSetupDialog
                 open={!isProfileReady}
                 onConfirm={createProfile}
             />

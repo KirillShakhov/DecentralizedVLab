@@ -13,7 +13,13 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import SettingsIcon from '@mui/icons-material/Settings';
 import HomeIcon from '@mui/icons-material/Home';
 import SyncIcon from '@mui/icons-material/Sync';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import SettingsBrightnessIcon from '@mui/icons-material/SettingsBrightness';
+import { useThemeMode } from '../../contexts/ThemeModeContext';
 import type { User } from '../../types';
+
+type ThemeMode = 'auto' | 'light' | 'dark'
 
 interface Props {
     appManager: any;
@@ -23,6 +29,7 @@ interface Props {
 export default function TopBar({ appManager, user }: Props) {
     const navigate = useNavigate();
     const location = useLocation();
+    const { mode, setMode } = useThemeMode();
 
     const {
         isOnline, installPrompt, isLabCached, isLabDownloading, hasLabUpdate,
@@ -43,6 +50,19 @@ export default function TopBar({ appManager, user }: Props) {
             if (s) setSessionContext({ labTitle: s.labTitle, courseTitle: s.courseTitle });
         });
     }, [location.pathname, isSession]);
+
+    const cycleTheme = () => {
+        const next: Record<ThemeMode, ThemeMode> = { auto: 'light', light: 'dark', dark: 'auto' }
+        setMode(next[mode])
+    }
+
+    const themeIcon = mode === 'light'
+        ? <LightModeIcon fontSize="small" />
+        : mode === 'dark'
+            ? <DarkModeIcon fontSize="small" />
+            : <SettingsBrightnessIcon fontSize="small" />
+
+    const themeLabel = mode === 'auto' ? 'Авто' : mode === 'light' ? 'Светлая' : 'Тёмная'
 
     return (
         <AppBar
@@ -181,6 +201,16 @@ export default function TopBar({ appManager, user }: Props) {
                             fontWeight: 600,
                         }}
                     />
+
+                    <Tooltip title={`Тема: ${themeLabel}`}>
+                        <IconButton
+                            size="small"
+                            onClick={cycleTheme}
+                            sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary', bgcolor: 'action.hover' } }}
+                        >
+                            {themeIcon}
+                        </IconButton>
+                    </Tooltip>
 
                     {installPrompt && (
                         <Tooltip title="Установить как приложение">

@@ -64,14 +64,14 @@ export default function FileTree({
       display: 'flex', flexDirection: 'column',
       height: '100%', borderRight: '1px solid',
       borderColor: 'divider',
-      bgcolor: '#f8fafc', minWidth: 0,
+      bgcolor: 'background.default', minWidth: 0,
     }}>
       {/* Заголовок */}
       <Box sx={{
         px: 1.5, py: 1,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0,
-        bgcolor: '#f1f5f9',
+        bgcolor: 'background.paper',
       }}>
         <Typography variant="caption" sx={{
           color: 'text.secondary', fontWeight: 700,

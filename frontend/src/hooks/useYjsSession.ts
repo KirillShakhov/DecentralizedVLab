@@ -27,14 +27,11 @@ export function useYjsSession(
   initialFiles: Record<string, string>,
   currentUser?: User | null,
 ) {
-  // Y.Doc создаётся один раз за жизнь компонента
+  // Y.Doc инициализируется до вызовов useState, чтобы fileList и activeFile
+  // были корректны уже на первом рендере (иначе редактор монтировался без файла
+  // и MonacoBinding не создавался до переключения вкладок)
   const ydocRef = useRef<Y.Doc | null>(null)
-  const connectionRef = useRef<any>(null)
-  const [fileList, setFileList] = useState<string[]>([])
-  const [activeFile, setActiveFile] = useState<string>('')
-  const [participants, setParticipants] = useState<Participant[]>([])
 
-  // Ленивая инициализация Y.Doc (до первого рендера)
   if (!ydocRef.current) {
     const ydoc = new Y.Doc()
     ydocRef.current = ydoc
@@ -65,6 +62,16 @@ export function useYjsSession(
   const ydoc = ydocRef.current!
   const yfiles = ydoc.getMap<Y.Text>('files')
   const ypresence = ydoc.getMap<any>('presence')
+
+  const connectionRef = useRef<any>(null)
+
+  // Инициализируем из yfiles синхронно — редактор получит правильный файл сразу
+  const [fileList, setFileList] = useState<string[]>(() => Array.from(yfiles.keys()).sort())
+  const [activeFile, setActiveFile] = useState<string>(() => {
+    const keys = Array.from(yfiles.keys()).sort()
+    return keys[0] ?? ''
+  })
+  const [participants, setParticipants] = useState<Participant[]>([])
 
   // ── Presence: вписываем себя при монтировании, удаляем при размонтировании ─
 
