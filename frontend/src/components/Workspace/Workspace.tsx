@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Box, Paper, Select, MenuItem, FormControl, InputLabel,
   Button, Chip, Typography, CircularProgress, IconButton,
-  Tooltip, Divider, Collapse, Snackbar,
+  Tooltip, Divider, Snackbar, LinearProgress,
 } from '@mui/material';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import CloudDoneIcon from '@mui/icons-material/CloudDone';
@@ -10,6 +10,10 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import DescriptionIcon from '@mui/icons-material/Description';
 import SpeedIcon from '@mui/icons-material/Speed';
 import ShareIcon from '@mui/icons-material/Share';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 
 import Terminal from '../Terminal/Terminal';
 import FileTree from '../FileTree/FileTree';
@@ -36,15 +40,29 @@ const COMPILERS: Record<string, any> = {
 };
 
 const STORAGE_KEY = 'vlab_selected_compiler';
+const DESC_WIDTH_KEY = 'vlab_desc_width';
+const DESC_COLLAPSED_KEY = 'vlab_desc_collapsed';
+const MIN_DESC_WIDTH = 200;
+const MAX_DESC_WIDTH = 520;
 
 interface WorkspaceProps {
   roomId: string;
   isOnline: boolean;
   lab?: Lab;
   user?: User | null;
+  nextLab?: Lab | null;
+  labIndex?: number;
+  totalLabs?: number;
+  completedCount?: number;
+  onLabComplete?: () => void;
+  onNavigateNext?: () => void;
 }
 
-export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProps) {
+export default function Workspace({
+  roomId, isOnline, lab, user,
+  nextLab, labIndex, totalLabs, completedCount,
+  onLabComplete, onNavigateNext,
+}: WorkspaceProps) {
   const [currentLang, setCurrentLang] = useState(() =>
     lab?.language ?? localStorage.getItem(STORAGE_KEY) ?? ''
   );
@@ -53,9 +71,51 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
   const [isEngineReady, setIsEngineReady] = useState(false);
   const [status, setStatus] = useState({ isDownloaded: false, isDownloading: false, progress: 0 });
   const [openFiles, setOpenFiles] = useState<string[]>([]);
-  const [showDescription, setShowDescription] = useState(true);
   const [showProfiler, setShowProfiler] = useState(false);
   const [snackbar, setSnackbar] = useState('');
+
+  // Description panel state
+  const [descWidth, setDescWidth] = useState(() => {
+    const saved = localStorage.getItem(DESC_WIDTH_KEY)
+    return saved ? Math.max(MIN_DESC_WIDTH, Math.min(MAX_DESC_WIDTH, parseInt(saved))) : 280
+  });
+  const [descCollapsed, setDescCollapsed] = useState(() =>
+    localStorage.getItem(DESC_COLLAPSED_KEY) === 'true'
+  );
+
+  const descWidthRef = useRef(descWidth);
+  const completedCalledRef = useRef(false);
+  const onLabCompleteRef = useRef(onLabComplete);
+
+  useEffect(() => { onLabCompleteRef.current = onLabComplete }, [onLabComplete]);
+
+  const updateDescWidth = useCallback((w: number) => {
+    descWidthRef.current = w;
+    setDescWidth(w);
+    localStorage.setItem(DESC_WIDTH_KEY, String(w));
+  }, []);
+
+  const toggleDescCollapsed = useCallback((val: boolean) => {
+    setDescCollapsed(val);
+    localStorage.setItem(DESC_COLLAPSED_KEY, String(val));
+  }, []);
+
+  // Drag-to-resize handler
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = descWidthRef.current;
+
+    const onMove = (ev: MouseEvent) => {
+      updateDescWidth(Math.max(MIN_DESC_WIDTH, Math.min(MAX_DESC_WIDTH, startWidth + ev.clientX - startX)));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [updateDescWidth]);
 
   const initialFiles = React.useMemo<Record<string, string>>(() =>
     lab?.files ? Object.fromEntries(lab.files.map(f => [f.path, f.content])) : {},
@@ -72,18 +132,31 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
   const { result: profilerResult, running: profilerRunning, progress: profilerProgress, runBenchmark } =
     useProfiler(getFiles, compiler, currentLang);
 
+  const hasTests = (lab?.testCases?.length ?? 0) > 0;
+  const hasDescription = !!lab?.description;
+
+  const allTestsPassed = useMemo(() =>
+    hasTests && !running && summary.total > 0 && summary.passed === summary.total,
+    [hasTests, running, summary.total, summary.passed],
+  );
+
+  // Detect test completion → save progress once
+  useEffect(() => {
+    if (allTestsPassed && !completedCalledRef.current) {
+      completedCalledRef.current = true;
+      onLabCompleteRef.current?.();
+      setSnackbar('🎉 Все тесты пройдены! Прогресс сохранён.');
+    }
+  }, [allTestsPassed]);
+
   useEffect(() => {
     if (fileList.length === 0) return;
-
     if (!activeFile || !fileList.includes(activeFile)) {
       setActiveFile(fileList[0]);
     }
-
     setOpenFiles(prev => {
       const valid = prev.filter(p => fileList.includes(p));
-      const merged = (valid.includes(activeFile) || !activeFile)
-        ? valid
-        : [...valid, activeFile];
+      const merged = (valid.includes(activeFile) || !activeFile) ? valid : [...valid, activeFile];
       return merged.length > 0 ? merged : [fileList[0]];
     });
   }, [fileList, activeFile]);
@@ -101,13 +174,11 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
       if (!currentLang || !COMPILERS[currentLang]) return;
       const c = COMPILERS[currentLang];
       const downloaded = await c.isDownloaded();
-
       if (!isOnline && !downloaded) {
         setIsEngineReady(false);
         setOutput(`⚠️ ОФЛАЙН:\nДвижок "${c.name}" не загружен.\nСкачайте движок при наличии сети.`);
         return;
       }
-
       setIsEngineReady(false);
       try {
         if (isOnline && !downloaded) setOutput(`⏳ Загрузка ${c.name}...`);
@@ -181,16 +252,16 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
   };
 
   const handleShare = async () => {
-    const url = window.location.href
-    await navigator.clipboard.writeText(url)
-    setSnackbar('Ссылка скопирована!')
-  }
+    await navigator.clipboard.writeText(window.location.href);
+    setSnackbar('Ссылка скопирована!');
+  };
 
-  const roomCode = roomId.slice(0, 8).toUpperCase()
+  const roomCode = roomId.slice(0, 8).toUpperCase();
   const readOnlyFiles = lab?.files?.filter(f => f.readOnly).map(f => f.path) ?? [];
-  const hasTests = (lab?.testCases?.length ?? 0) > 0;
   const effectiveOpenFiles = openFiles.length > 0 ? openFiles : fileList.slice(0, 1);
-  const hasDescription = !!lab?.description;
+
+  // Next lab button visible in toolbar when description panel is not showing it
+  const showToolbarNextBtn = !!nextLab && (!hasDescription || descCollapsed) && (!hasTests || allTestsPassed);
 
   return (
     <>
@@ -225,12 +296,10 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
               icon={<ShareIcon sx={{ fontSize: '13px !important' }} />}
               onClick={handleShare}
               sx={{
-                bgcolor: 'rgba(79,70,229,0.07)',
-                color: 'primary.main',
+                bgcolor: 'rgba(79,70,229,0.07)', color: 'primary.main',
                 border: '1px solid rgba(79,70,229,0.2)',
                 fontFamily: '"JetBrains Mono", monospace',
-                fontSize: 11, fontWeight: 600,
-                cursor: 'pointer',
+                fontSize: 11, fontWeight: 600, cursor: 'pointer',
                 '&:hover': { bgcolor: 'rgba(79,70,229,0.12)' },
               }}
             />
@@ -243,10 +312,7 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
             <Select
               value={currentLang} label="Среда" onChange={handleLangChange}
               disabled={!!lab}
-              sx={{
-                fontSize: 13,
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
-              }}
+              sx={{ fontSize: 13, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' } }}
             >
               <MenuItem value=""><em>Выбрать</em></MenuItem>
               {Object.values(COMPILERS).map((c: any) => (
@@ -256,13 +322,13 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
           </FormControl>
 
           {hasDescription && (
-            <Tooltip title={showDescription ? 'Скрыть задание' : 'Показать задание'}>
+            <Tooltip title={descCollapsed ? 'Показать задание' : 'Скрыть задание'}>
               <IconButton
                 size="small"
-                onClick={() => setShowDescription(s => !s)}
+                onClick={() => toggleDescCollapsed(!descCollapsed)}
                 sx={{
-                  color: showDescription ? 'primary.main' : 'text.secondary',
-                  bgcolor: showDescription ? 'rgba(79,70,229,0.08)' : 'transparent',
+                  color: !descCollapsed ? 'primary.main' : 'text.secondary',
+                  bgcolor: !descCollapsed ? 'rgba(79,70,229,0.08)' : 'transparent',
                 }}
               >
                 <DescriptionIcon fontSize="small" />
@@ -272,11 +338,8 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
 
           {lab && (
             <Tooltip title="Сбросить к шаблону">
-              <IconButton
-                size="small"
-                onClick={handleReset}
-                sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}
-              >
+              <IconButton size="small" onClick={handleReset}
+                sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}>
                 <RestartAltIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -300,7 +363,6 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
         {/* Правая часть */}
         <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
           <ParticipantList participants={participants} currentUserId={user?.id} />
-
           {participants.length > 0 && <Divider orientation="vertical" flexItem sx={{ borderColor: 'divider' }} />}
 
           {status.isDownloading && (
@@ -311,21 +373,29 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
             />
           )}
           {currentLang && !status.isDownloaded && !status.isDownloading && (
-            <Button
-              size="small" variant="contained" color="success"
-              startIcon={<CloudDownloadIcon />}
-              onClick={handleDownload}
-              sx={{ py: 0.5 }}
-            >
+            <Button size="small" variant="contained" color="success"
+              startIcon={<CloudDownloadIcon />} onClick={handleDownload} sx={{ py: 0.5 }}>
               Скачать движок
             </Button>
           )}
           {status.isDownloaded && (
-            <Chip
-              icon={<CloudDoneIcon sx={{ fontSize: '14px !important' }} />}
-              label="Offline" variant="outlined" size="small"
-              color="success"
-            />
+            <Chip icon={<CloudDoneIcon sx={{ fontSize: '14px !important' }} />}
+              label="Offline" variant="outlined" size="small" color="success" />
+          )}
+
+          {/* Next lab button in toolbar (fallback when description panel not visible) */}
+          {showToolbarNextBtn && (
+            <>
+              <Divider orientation="vertical" flexItem sx={{ borderColor: 'divider' }} />
+              <Button
+                size="small" variant="contained" color="success"
+                endIcon={<ArrowForwardIcon />}
+                onClick={onNavigateNext}
+                sx={{ py: 0.5, fontSize: 12, borderRadius: '8px', fontWeight: 600 }}
+              >
+                Следующее
+              </Button>
+            </>
           )}
         </Box>
       </Paper>
@@ -333,15 +403,162 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
       {/* Основная область */}
       <Box sx={{ display: 'flex', flexGrow: 1, minHeight: 0 }}>
 
+        {/* Description panel */}
+        {hasDescription && (
+          descCollapsed ? (
+            /* Collapsed strip */
+            <Box sx={{
+              width: 28, flexShrink: 0,
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              borderRight: '1px solid', borderColor: 'divider',
+              bgcolor: 'background.paper', py: 1,
+            }}>
+              <Tooltip title="Показать задание" placement="right">
+                <IconButton size="small" onClick={() => toggleDescCollapsed(false)} sx={{ p: 0.5 }}>
+                  <ChevronRightIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Tooltip>
+              <Box sx={{
+                mt: 2, writingMode: 'vertical-lr', transform: 'rotate(180deg)',
+                color: 'text.disabled', fontSize: 10, fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '0.1em', userSelect: 'none',
+              }}>
+                Задание
+              </Box>
+            </Box>
+          ) : (
+            <>
+              {/* Expanded description panel */}
+              <Box sx={{
+                width: descWidth, flexShrink: 0,
+                display: 'flex', flexDirection: 'column',
+                bgcolor: 'background.paper',
+                overflow: 'hidden',
+              }}>
+                {/* Header */}
+                <Box sx={{
+                  px: 1.5, py: 0.875,
+                  display: 'flex', alignItems: 'center',
+                  borderBottom: '1px solid', borderColor: 'divider',
+                  flexShrink: 0,
+                }}>
+                  <DescriptionIcon sx={{ fontSize: 13, color: 'primary.main', mr: 0.75 }} />
+                  <Typography variant="caption" fontWeight={700} color="primary.main"
+                    sx={{ textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
+                    Задание{labIndex && totalLabs ? ` ${labIndex}/${totalLabs}` : ''}
+                  </Typography>
+                  <Tooltip title="Свернуть">
+                    <IconButton size="small" onClick={() => toggleDescCollapsed(true)} sx={{ p: 0.25 }}>
+                      <ChevronLeftIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+
+                {/* Course progress bar */}
+                {!!totalLabs && totalLabs > 0 && completedCount !== undefined && (
+                  <Tooltip title={`Пройдено: ${completedCount} из ${totalLabs}`} placement="bottom">
+                    <LinearProgress
+                      variant="determinate"
+                      value={(completedCount / totalLabs) * 100}
+                      sx={{
+                        height: 3, flexShrink: 0,
+                        bgcolor: 'action.hover',
+                        '& .MuiLinearProgress-bar': {
+                          bgcolor: completedCount === totalLabs ? 'success.main' : 'primary.main',
+                        },
+                      }}
+                    />
+                  </Tooltip>
+                )}
+
+                {/* Description text */}
+                <Box sx={{ flexGrow: 1, overflow: 'auto', px: 2, py: 1.5 }}>
+                  <Typography variant="body2" color="text.primary" sx={{
+                    whiteSpace: 'pre-wrap', lineHeight: 1.85, fontSize: '13px',
+                  }}>
+                    {lab!.description}
+                  </Typography>
+                </Box>
+
+                {/* Footer: test status + navigation */}
+                <Box sx={{
+                  flexShrink: 0, px: 2, py: 1.25,
+                  borderTop: '1px solid', borderColor: 'divider',
+                  bgcolor: allTestsPassed
+                    ? 'rgba(5,150,105,0.05)'
+                    : 'background.paper',
+                }}>
+                  {hasTests ? (
+                    allTestsPassed ? (
+                      <Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: nextLab ? 1 : 0 }}>
+                          <CheckCircleIcon sx={{ fontSize: 14, color: 'success.main' }} />
+                          <Typography variant="caption" fontWeight={700} color="success.main">
+                            Все тесты пройдены!
+                          </Typography>
+                        </Box>
+                        {nextLab ? (
+                          <Button
+                            variant="contained" size="small" fullWidth color="success"
+                            endIcon={<ArrowForwardIcon />}
+                            onClick={onNavigateNext}
+                            sx={{ borderRadius: '8px', fontWeight: 600, fontSize: 12 }}
+                          >
+                            Следующее задание
+                          </Button>
+                        ) : (
+                          <Typography variant="caption" color="success.main"
+                            sx={{ display: 'block', textAlign: 'center', fontWeight: 600 }}>
+                            🎉 Курс завершён!
+                          </Typography>
+                        )}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary"
+                        sx={{ display: 'block', textAlign: 'center' }}>
+                        {summary.total > 0
+                          ? `${summary.passed} / ${summary.total} тестов пройдено`
+                          : 'Запустите тесты для проверки'}
+                      </Typography>
+                    )
+                  ) : nextLab ? (
+                    <Button
+                      variant="outlined" size="small" fullWidth
+                      endIcon={<ArrowForwardIcon />}
+                      onClick={onNavigateNext}
+                      sx={{ borderRadius: '8px', fontWeight: 600, fontSize: 12 }}
+                    >
+                      Следующее задание
+                    </Button>
+                  ) : (
+                    <Typography variant="caption" color="text.secondary"
+                      sx={{ display: 'block', textAlign: 'center' }}>
+                      Последнее задание курса
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+
+              {/* Drag handle */}
+              <Box
+                onMouseDown={handleResizeStart}
+                sx={{
+                  width: 4, flexShrink: 0, cursor: 'col-resize',
+                  bgcolor: 'divider',
+                  transition: 'background-color 0.15s',
+                  '&:hover': { bgcolor: 'primary.main' },
+                }}
+              />
+            </>
+          )
+        )}
+
         {/* FileTree */}
         <Box sx={{ width: 200, flexShrink: 0 }}>
           <FileTree
-            fileList={fileList}
-            activeFile={activeFile}
+            fileList={fileList} activeFile={activeFile}
             readOnlyFiles={readOnlyFiles}
-            onSelect={openTab}
-            onAdd={handleAddFile}
-            onDelete={deleteFile}
+            onSelect={openTab} onAdd={handleAddFile} onDelete={deleteFile}
           />
         </Box>
 
@@ -355,71 +572,31 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
             </Box>
           ) : (
             <MultiFileEditor
-              yfiles={yfiles}
-              activeFile={activeFile}
+              yfiles={yfiles} activeFile={activeFile}
               openFiles={effectiveOpenFiles}
-              onSwitchTab={openTab}
-              onCloseTab={closeTab}
+              onSwitchTab={openTab} onCloseTab={closeTab}
             />
           )}
         </Box>
 
-        {/* Правая колонка: Задание + Terminal + TestPanel */}
-        <Box sx={{ width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-
-          {/* Описание задания */}
-          {hasDescription && (
-            <Collapse in={showDescription}>
-              <Box sx={{
-                borderBottom: '1px solid',
-                borderColor: 'divider',
-                bgcolor: 'background.paper',
-                flexShrink: 0,
-              }}>
-                <Box sx={{
-                  px: 2, py: 1,
-                  display: 'flex', alignItems: 'center',
-                  borderBottom: '1px solid', borderColor: 'divider',
-                }}>
-                  <DescriptionIcon sx={{ fontSize: 13, color: 'primary.main', mr: 0.75 }} />
-                  <Typography variant="caption" fontWeight={700} color="primary.main"
-                    sx={{ textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
-                    Задание
-                  </Typography>
-                </Box>
-                <Box sx={{ px: 2, py: 1.5, maxHeight: '28vh', overflow: 'auto' }}>
-                  <Typography variant="body2" color="text.primary" sx={{
-                    whiteSpace: 'pre-wrap',
-                    lineHeight: 1.85,
-                    fontSize: '13px',
-                  }}>
-                    {lab!.description}
-                  </Typography>
-                </Box>
-              </Box>
-            </Collapse>
-          )}
-
+        {/* Правая колонка: Terminal + TestPanel */}
+        <Box sx={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <Box sx={{
             flexGrow: 1, minHeight: 0,
             borderBottom: hasTests ? '1px solid rgba(0,0,0,0.15)' : 'none',
           }}>
             <Terminal
-              output={output}
-              stdin={stdin}
+              output={output} stdin={stdin}
               isWasmReady={isEngineReady}
-              onRunCode={runCode}
-              onStdinChange={setStdin}
+              onRunCode={runCode} onStdinChange={setStdin}
             />
           </Box>
 
           {hasTests && (
             <Box sx={{ flexShrink: 0, maxHeight: '45%', display: 'flex', flexDirection: 'column' }}>
               <TestPanel
-                testCases={lab!.testCases}
-                results={results}
-                running={running}
-                summary={summary}
+                testCases={lab!.testCases} results={results}
+                running={running} summary={summary}
                 isEngineReady={isEngineReady}
                 onRunTests={() => runTests(lab!.testCases)}
               />
@@ -429,23 +606,20 @@ export default function Workspace({ roomId, isOnline, lab, user }: WorkspaceProp
       </Box>
     </Box>
 
-      <ProfilerPanel
-        open={showProfiler}
-        onClose={() => setShowProfiler(false)}
-        result={profilerResult}
-        running={profilerRunning}
-        progress={profilerProgress}
-        isEngineReady={isEngineReady}
-        onRunBenchmark={runBenchmark}
-      />
+    <ProfilerPanel
+      open={showProfiler} onClose={() => setShowProfiler(false)}
+      result={profilerResult} running={profilerRunning}
+      progress={profilerProgress} isEngineReady={isEngineReady}
+      onRunBenchmark={runBenchmark}
+    />
 
-      <Snackbar
-        open={!!snackbar}
-        autoHideDuration={2500}
-        onClose={() => setSnackbar('')}
-        message={snackbar}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      />
+    <Snackbar
+      open={!!snackbar}
+      autoHideDuration={3000}
+      onClose={() => setSnackbar('')}
+      message={snackbar}
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+    />
     </>
   );
 }
