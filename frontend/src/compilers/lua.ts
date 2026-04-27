@@ -73,17 +73,36 @@ export const LuaCompiler = {
         }
     },
 
-    async run(code: string, logOutput: (out: string) => void): Promise<void> {
+    async run(
+        files: Record<string, string>,
+        logOutput: (out: string) => void,
+        _stdin?: string
+    ): Promise<void> {
         if (!luaEngine) throw new Error("Lua не инициализирована");
         let output = "";
 
-        // Перехват принта согласно API 1.16.0
         luaEngine.global.set('print', (...args: any[]) => {
             output += args.map(a => String(a)).join('\t') + "\n";
         });
 
+        // Регистрируем вспомогательные файлы как require-модули
+        luaEngine.global.set('require', (moduleName: string) => {
+            const candidates = [`${moduleName}.lua`, moduleName];
+            for (const candidate of candidates) {
+                if (files[candidate] !== undefined) {
+                    const fn = luaEngine.global.lua.lua_newstate
+                        ? undefined : undefined; // заглушка — полный require в Stage 3
+                    return null;
+                }
+            }
+            throw new Error(`module '${moduleName}' not found`);
+        });
+
+        // Точка входа: main.lua или первый файл
+        const entry = 'main.lua' in files ? 'main.lua' : Object.keys(files)[0];
+
         try {
-            await luaEngine.doString(code);
+            await luaEngine.doString(files[entry]);
             logOutput(output || "Программа выполнена успешно.");
         } catch (err: any) {
             logOutput(`❌ Ошибка исполнения Lua:\n${err.message}`);

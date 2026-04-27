@@ -67,11 +67,16 @@ export const JavaCompiler = {
         }
     },
 
-    async run(code: string, logOutput: (out: string) => void): Promise<void> {
+    async run(
+        files: Record<string, string>,
+        logOutput: (out: string) => void,
+        _stdin?: string
+    ): Promise<void> {
         if (!javaInstance) throw new Error("Движок не инициализирован");
-
-        // Передаем код в нашу "виртуальную машину"
-        const stdout = await javaInstance.runJava(code);
+        // Точка входа: Main.java или первый .java файл
+        const entry = 'Main.java' in files ? 'Main.java'
+            : Object.keys(files).find(p => p.endsWith('.java')) ?? Object.keys(files)[0];
+        const stdout = await javaInstance.runJava(files[entry]);
         logOutput(stdout);
     }
 };

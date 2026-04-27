@@ -6,7 +6,14 @@ import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack';
 import { HubConnectionBuilder, LogLevel, HubConnectionState } from '@microsoft/signalr';
 import { Box } from '@mui/material';
 
-export default function CodeEditor({ roomId, language, onEditorReady }) {
+interface CodeEditorProps {
+    roomId: string;
+    language: string;
+    initialCode?: string | null; // начальный код из шаблона лабораторной
+    onEditorReady?: (editor: any) => void;
+}
+
+export default function CodeEditor({ roomId, language, initialCode, onEditorReady }: CodeEditorProps) {
     const editorRef = useRef(null);
     const ydocRef = useRef(null);
     const connectionRef = useRef(null);
@@ -25,10 +32,11 @@ export default function CodeEditor({ roomId, language, onEditorReady }) {
         ydocRef.current = ydoc;
         const ytext = ydoc.getText('monaco');
 
-        // 1. ЛОКАЛЬНАЯ РАЗРАБОТКА: Загружаем сохраненный код из LocalStorage
+        // 1. Приоритет источников кода: localStorage > initialCode (шаблон лабы)
         const savedCode = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (savedCode) {
-            ytext.insert(0, savedCode); // Инициализируем Yjs сохраненным текстом
+        const startCode = savedCode ?? initialCode ?? null;
+        if (startCode) {
+            ytext.insert(0, startCode);
         }
 
         const connection = new HubConnectionBuilder()

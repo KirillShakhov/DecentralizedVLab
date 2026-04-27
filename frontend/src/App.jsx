@@ -1,21 +1,26 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Box, CircularProgress, Typography, CssBaseline } from '@mui/material';
-import Workspace from './components/Workspace/Workspace';
 import TopBar from './components/TopBar/TopBar';
 import Settings from './components/Settings/Settings';
+import ProfileSetupDialog from './components/ProfileSetupDialog/ProfileSetupDialog';
+import HomePage from './pages/HomePage';
+import CoursePage from './pages/CoursePage';
+import CourseEditorPage from './pages/CourseEditorPage';
+import SessionPage from './pages/SessionPage';
 import { useAppManager } from './hooks/useAppManager';
+import { useUserProfile } from './hooks/useUserProfile';
 
 function App() {
-    const [roomId] = useState('lab-task-001');
     const appManager = useAppManager();
+    const { user, isProfileReady, createProfile } = useUserProfile();
 
-    // ЭКРАН ЗАГРУЗКИ (Пока проверяем кэш и статус PWA)
+    // Экран инициализации
     if (!appManager.isAppReady) {
         return (
             <Box sx={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
-                justifyContent: 'center', minHeight: '100vh', bgcolor: '#0a0a0a'
+                justifyContent: 'center', minHeight: '100vh', bgcolor: '#0a0a0a',
             }}>
                 <CircularProgress size={60} thickness={4} sx={{ color: '#2196f3' }} />
                 <Typography variant="h6" sx={{ mt: 3, color: '#fff', fontWeight: 'bold' }}>
@@ -28,45 +33,67 @@ function App() {
         );
     }
 
-    // ОСНОВНОЙ ИНТЕРФЕЙС С РОУТИНГОМ
     return (
         <Router>
-            <CssBaseline /> {/* Сбрасывает стандартные отступы браузера под темную тему */}
+            <CssBaseline />
+
+            {/* Диалог первого запуска — блокирует всё, пока нет профиля */}
+            <ProfileSetupDialog
+                open={!isProfileReady}
+                onConfirm={createProfile}
+            />
+
             <Box sx={{
                 display: 'flex',
                 flexDirection: 'column',
                 minHeight: '100vh',
-                bgcolor: '#0a0a0a', // Общий фон приложения
-                p: 3,
-                gap: 3,
-                boxSizing: 'border-box'
+                bgcolor: '#0a0a0a',
             }}>
-                {/* Шапка всегда на месте, она использует useNavigate внутри */}
-                <TopBar roomId={roomId} appManager={appManager} />
+                <TopBar appManager={appManager} user={user} />
 
-                {/* Контент меняется в зависимости от URL */}
-                <Routes>
-                    {/* Главная страница с редактором */}
-                    <Route
-                        path="/"
-                        element={<Workspace roomId={roomId} isOnline={appManager.isOnline} />}
-                    />
+                <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+                    <Routes>
+                        {/* Главная */}
+                        <Route
+                            path="/"
+                            element={user ? <HomePage user={user} /> : null}
+                        />
 
-                    {/* Поддержка входа в конкретную комнату по ссылке */}
-                    <Route
-                        path="/room/:id"
-                        element={<Workspace roomId={roomId} isOnline={appManager.isOnline} />}
-                    />
+                        {/* Курсы */}
+                        <Route
+                            path="/courses/new"
+                            element={user ? <CourseEditorPage user={user} /> : null}
+                        />
+                        <Route
+                            path="/courses/:courseId/edit"
+                            element={user ? <CourseEditorPage user={user} /> : null}
+                        />
+                        <Route
+                            path="/courses/:courseId"
+                            element={user ? <CoursePage user={user} /> : null}
+                        />
 
-                    {/* Новая страница настроек хранилища */}
-                    <Route
-                        path="/settings"
-                        element={<Settings appManager={appManager} />}
-                    />
+                        {/* Сессия (рабочая область) */}
+                        <Route
+                            path="/session/:sessionId"
+                            element={user
+                                ? <SessionPage user={user} isOnline={appManager.isOnline} />
+                                : null
+                            }
+                        />
 
-                    {/* Редирект для несуществующих страниц */}
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
+                        {/* Настройки */}
+                        <Route
+                            path="/settings"
+                            element={<Settings appManager={appManager} />}
+                        />
+
+                        {/* Редирект старых ссылок на /room/:id */}
+                        <Route path="/room/:id" element={<Navigate to="/" replace />} />
+
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                    </Routes>
+                </Box>
             </Box>
         </Router>
     );

@@ -25,18 +25,37 @@ export const JavascriptCompiler = {
         // V8 уже вшит в браузер, больше ничего делать не нужно
     },
 
-    async run(code, logOutput) {
-        let logs = [];
+    async run(files, logOutput, stdin) {
+        const logs = [];
         const originalLog = console.log;
-        console.log = (...args) => logs.push(args.join(' '));
+        const originalError = console.error;
+        const originalWarn = console.warn;
+
+        console.log = (...args) => logs.push(args.map(String).join(' '));
+        console.error = (...args) => logs.push('❌ ' + args.map(String).join(' '));
+        console.warn = (...args) => logs.push('⚠️ ' + args.map(String).join(' '));
+
         try {
-            const fn = new Function(code);
+            // Точка входа: main.js или первый файл
+            const entry = 'main.js' in files ? 'main.js' : Object.keys(files)[0];
+
+            // Собираем вспомогательные модули как переменные
+            // Простой механизм: остальные файлы выполняются первыми и экспортируют в globalThis
+            const helpers = Object.entries(files)
+                .filter(([path]) => path !== entry)
+                .map(([, code]) => code)
+                .join('\n\n');
+
+            const fullCode = helpers + '\n\n' + files[entry];
+            const fn = new Function(fullCode);
             fn();
             logOutput(logs.join('\n') || 'Программа выполнена (логов нет)');
         } catch (err) {
             logOutput(`❌ Ошибка выполнения:\n${err.message}`);
         } finally {
             console.log = originalLog;
+            console.error = originalError;
+            console.warn = originalWarn;
         }
     },
 

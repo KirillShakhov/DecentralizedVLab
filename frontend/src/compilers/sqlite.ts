@@ -75,23 +75,48 @@ export const SQLiteCompiler = {
         dbInstance = new SQL.Database();
     },
 
-    async run(code: string, logOutput: (out: string) => void): Promise<void> {
-        if (!dbInstance) throw new Error("SQLite не инициализирован");
+    async run(
+        files: Record<string, string>,
+        logOutput: (out: string) => void,
+        _stdin?: string
+    ): Promise<void> {
+        if (!SQL) throw new Error("SQLite не инициализирован");
+
+        // Каждый запуск — свежая БД (чтобы результаты были детерминированы)
+        const db = new SQL.Database();
+        const output: string[] = [];
+
+        // Выполняем .sql файлы в алфавитном порядке (schema → seed → queries)
+        const sqlFiles = Object.entries(files)
+            .filter(([path]) => path.endsWith('.sql'))
+            .sort(([a], [b]) => a.localeCompare(b));
+
+        if (sqlFiles.length === 0) {
+            logOutput("⚠️ Нет .sql файлов для выполнения");
+            return;
+        }
 
         try {
-            const res = dbInstance.exec(code);
-            if (res.length === 0) {
-                logOutput("✅ Запрос выполнен (изменено строк: " + dbInstance.getRowsModified() + ")");
-                return;
+            for (const [path, code] of sqlFiles) {
+                output.push(`-- ${path}`);
+                const res = db.exec(code);
+                if (res.length === 0) {
+                    output.push(`✅ Выполнено (изменено строк: ${db.getRowsModified()})`);
+                } else {
+                    res.forEach((result: any) => {
+                        const header = result.columns.join(' | ');
+                        const sep = '-'.repeat(Math.max(header.length, 10));
+                        const rows = result.values.map((v: any) => v.join(' | ')).join('\n');
+                        output.push(`${header}\n${sep}\n${rows}`);
+                    });
+                }
+                output.push('');
             }
-
-            res.forEach((result: any) => {
-                const header = result.columns.join(' | ');
-                const rows = result.values.map((v: any) => v.join(' | ')).join('\n');
-                logOutput(`\n[РЕЗУЛЬТАТ ЗАПРОСА]:\n${header}\n${'-'.repeat(header.length)}\n${rows}\n`);
-            });
+            logOutput(output.join('\n'));
         } catch (err: any) {
             logOutput(`❌ Ошибка SQLite: ${err.message}`);
+        } finally {
+            db.close();
         }
     }
 };
