@@ -102,6 +102,7 @@ export default function SessionPage({ user, isOnline }: Props) {
 
   return (
     <Workspace
+      key={sessionId}
       roomId={sessionId}
       isOnline={isOnline}
       lab={lab}
