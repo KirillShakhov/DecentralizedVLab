@@ -23,13 +23,14 @@ interface Props {
   fileList: string[]
   activeFile: string
   readOnlyFiles?: string[]
+  labFiles?: string[]        // файлы из шаблона лабы — нельзя удалять
   onSelect: (path: string) => void
   onAdd: (path: string) => void
   onDelete: (path: string) => void
 }
 
 export default function FileTree({
-  fileList, activeFile, readOnlyFiles = [],
+  fileList, activeFile, readOnlyFiles = [], labFiles = [],
   onSelect, onAdd, onDelete,
 }: Props) {
   const [adding, setAdding] = useState(false)
@@ -96,6 +97,7 @@ export default function FileTree({
         {fileList.map(path => {
           const isActive = path === activeFile
           const isReadOnly = readOnlyFiles.includes(path)
+          const isLabFile = labFiles.includes(path)
           return (
             <ListItemButton
               key={path}
@@ -132,14 +134,13 @@ export default function FileTree({
                 <Tooltip title="Только для чтения">
                   <LockIcon sx={{ fontSize: 13, color: 'text.disabled', flexShrink: 0 }} />
                 </Tooltip>
-              ) : (
+              ) : !isLabFile ? (
                 <Tooltip title="Удалить файл">
                   <IconButton
                     className="delete-btn"
                     size="small"
                     onClick={e => {
                       e.stopPropagation()
-                      if (fileList.length === 1) return
                       if (confirm(`Удалить файл "${path}"?`)) onDelete(path)
                     }}
                     sx={{
@@ -151,7 +152,7 @@ export default function FileTree({
                     <DeleteOutlineIcon sx={{ fontSize: 14 }} />
                   </IconButton>
                 </Tooltip>
-              )}
+              ) : null}
             </ListItemButton>
           )
         })}

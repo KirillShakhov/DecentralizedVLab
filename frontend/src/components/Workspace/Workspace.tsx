@@ -327,6 +327,8 @@ export default function Workspace({
   const showRolePicker = !!labRoles && !myRole
 
   // Files owned by other roles are also read-only for this user
+  const labFiles = resolvedLab?.files?.map(f => f.path) ?? []
+
   const readOnlyFiles = useMemo(() => {
     const base = resolvedLab?.files?.filter(f => f.readOnly).map(f => f.path) ?? []
     if (!labRoles || !myRole) return base
@@ -638,6 +640,7 @@ export default function Workspace({
           <FileTree
             fileList={fileList} activeFile={activeFile}
             readOnlyFiles={readOnlyFiles}
+            labFiles={labFiles}
             onSelect={openTab} onAdd={handleAddFile} onDelete={deleteFile}
           />
         </Box>
