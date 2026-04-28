@@ -656,6 +656,7 @@ export default function Workspace({
               openFiles={effectiveOpenFiles}
               onSwitchTab={openTab} onCloseTab={closeTab}
               awareness={awareness}
+              readOnlyFiles={readOnlyFiles}
             />
           )}
         </Box>

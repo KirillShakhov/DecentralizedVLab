@@ -23,6 +23,7 @@ interface Props {
   onCloseTab: (path: string) => void
   onSwitchTab: (path: string) => void
   awareness?: Awareness
+  readOnlyFiles?: string[]
 }
 
 const FILE_ICONS: Record<string, string> = {
@@ -35,7 +36,7 @@ function getTabIcon(path: string) {
 }
 
 export default function MultiFileEditor({
-  yfiles, activeFile, openFiles, onCloseTab, onSwitchTab, awareness,
+  yfiles, activeFile, openFiles, onCloseTab, onSwitchTab, awareness, readOnlyFiles = [],
 }: Props) {
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
@@ -98,6 +99,7 @@ export default function MultiFileEditor({
     }
 
     editor.setModel(model)
+    editor.updateOptions({ readOnly: readOnlyFiles.includes(filePath) })
 
     if (activeBindingPathRef.current === filePath && activeBindingRef.current) {
       return
@@ -106,7 +108,7 @@ export default function MultiFileEditor({
     disposeActiveBinding()
     activeBindingRef.current = new MonacoBinding(ytext, model, new Set([editor]), awareness)
     activeBindingPathRef.current = filePath
-  }, [yfiles, disposeActiveBinding, awareness])
+  }, [yfiles, disposeActiveBinding, awareness, readOnlyFiles])
 
   useEffect(() => {
     if (editorRef.current && monacoRef.current && resolvedActiveFile) {

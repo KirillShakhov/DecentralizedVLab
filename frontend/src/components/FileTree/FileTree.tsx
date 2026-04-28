@@ -7,6 +7,7 @@ import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
+import LockIcon from '@mui/icons-material/Lock'
 
 const FILE_ICONS: Record<string, string> = {
   py: '🐍', js: '🟨', ts: '🔷', lua: '🌙',
@@ -127,7 +128,11 @@ export default function FileTree({
                   },
                 }}
               />
-              {!isReadOnly && (
+              {isReadOnly ? (
+                <Tooltip title="Только для чтения">
+                  <LockIcon sx={{ fontSize: 13, color: 'text.disabled', flexShrink: 0 }} />
+                </Tooltip>
+              ) : (
                 <Tooltip title="Удалить файл">
                   <IconButton
                     className="delete-btn"
