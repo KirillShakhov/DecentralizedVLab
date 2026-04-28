@@ -96,6 +96,10 @@ export const sessionDB = {
     }))
   },
 
+  getAll(): Promise<Session[]> {
+    return run('sessions', 'readonly', s => s.getAll())
+  },
+
   delete(id: string): Promise<void> {
     return run('sessions', 'readwrite', s => s.delete(id)) as Promise<unknown> as Promise<void>
   },

@@ -7,6 +7,7 @@ import {
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import CloudDoneIcon from '@mui/icons-material/CloudDone';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import DescriptionIcon from '@mui/icons-material/Description';
 import SpeedIcon from '@mui/icons-material/Speed';
 import ShareIcon from '@mui/icons-material/Share';
@@ -58,12 +59,13 @@ interface WorkspaceProps {
   completedCount?: number;
   onLabComplete?: () => void;
   onNavigateNext?: () => void;
+  onClearSession?: () => void;
 }
 
 export default function Workspace({
   roomId, isOnline, lab, user,
   nextLab, labIndex, totalLabs, completedCount,
-  onLabComplete, onNavigateNext,
+  onLabComplete, onNavigateNext, onClearSession,
 }: WorkspaceProps) {
   const [currentLang, setCurrentLang] = useState(() =>
     lab?.language ?? localStorage.getItem(STORAGE_KEY) ?? ''
@@ -418,10 +420,26 @@ export default function Workspace({
           )}
 
           {resolvedLab && (
-            <Tooltip title="Сбросить к шаблону">
+            <Tooltip title="Сбросить файлы к шаблону">
               <IconButton size="small" onClick={handleReset}
                 sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}>
                 <RestartAltIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          {onClearSession && (
+            <Tooltip title="Начать сначала — удалить сессию и создать новую">
+              <IconButton
+                size="small"
+                onClick={() => {
+                  if (confirm('Начать сначала? Весь прогресс этой сессии будет удалён.')) {
+                    onClearSession()
+                  }
+                }}
+                sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+              >
+                <DeleteSweepIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           )}

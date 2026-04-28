@@ -79,6 +79,27 @@ export default function SessionPage({ user, isOnline }: Props) {
     navigate(`/session/${newSession.id}`)
   }, [nextLab, course, navigate])
 
+  const handleClearSession = useCallback(async () => {
+    if (!sessionId || !course || !lab) return
+    // Удаляем Yjs-состояние из localStorage
+    localStorage.removeItem(`vlab_ydoc_${sessionId}`)
+    // Удаляем текущую сессию
+    await sessionDB.delete(sessionId)
+    // Создаём новую сессию для той же лабы
+    const newSession: Session = {
+      id: crypto.randomUUID(),
+      labId: lab.id,
+      courseId: course.id,
+      labTitle: lab.title,
+      courseTitle: course.title,
+      language: lab.language,
+      createdAt: Date.now(),
+      lastActive: Date.now(),
+    }
+    await sessionDB.save(newSession)
+    navigate(`/session/${newSession.id}`)
+  }, [sessionId, course, lab, navigate])
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 2 }}>
@@ -113,6 +134,7 @@ export default function SessionPage({ user, isOnline }: Props) {
       completedCount={completedCount}
       onLabComplete={handleLabComplete}
       onNavigateNext={handleNavigateNext}
+      onClearSession={lab ? handleClearSession : undefined}
     />
   )
 }

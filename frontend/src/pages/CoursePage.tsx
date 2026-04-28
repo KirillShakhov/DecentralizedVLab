@@ -11,7 +11,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import SchoolIcon from '@mui/icons-material/School'
 import CheckIcon from '@mui/icons-material/Check'
 import type { Course, User } from '../types'
-import { courseDB } from '../db'
+import { courseDB, sessionDB } from '../db'
 import { useRecentSessions } from '../hooks/useCourseStore'
 import { getCompletedLabs } from '../utils/progress'
 
@@ -56,6 +56,17 @@ export default function CoursePage({ user }: Props) {
 
     setStartingLab(labId)
     try {
+      // Ищем существующую сессию для этой лабы (самую свежую)
+      const all = await sessionDB.getAll()
+      const existing = all
+        .filter(s => s.labId === labId && s.courseId === course.id)
+        .sort((a, b) => b.lastActive - a.lastActive)[0]
+
+      if (existing) {
+        navigate(`/session/${existing.id}`)
+        return
+      }
+
       const sessionId = await createSession(
         lab.id, course.id, lab.title, course.title, lab.language,
       )
