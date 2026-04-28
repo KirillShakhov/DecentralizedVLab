@@ -15,7 +15,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 
-import Terminal from '../Terminal/Terminal';
+import Terminal, { type RunMode } from '../Terminal/Terminal';
 import FileTree from '../FileTree/FileTree';
 import MultiFileEditor from '../Editor/MultiFileEditor';
 import TestPanel from '../TestPanel/TestPanel';
@@ -30,6 +30,7 @@ import { LuaCompiler } from '../../compilers/lua';
 import { useYjsSession } from '../../hooks/useYjsSession';
 import { useTestRunner } from '../../hooks/useTestRunner';
 import { useProfiler } from '../../hooks/useProfiler';
+import { executeOnServer } from '../../api/executeApi';
 import type { Lab, User } from '../../types';
 
 const COMPILERS: Record<string, any> = {
@@ -74,6 +75,9 @@ export default function Workspace({
   const [openFiles, setOpenFiles] = useState<string[]>([]);
   const [showProfiler, setShowProfiler] = useState(false);
   const [profilerMode, setProfilerMode] = useState<'wasm-only' | 'compare'>('wasm-only');
+  const [runMode, setRunMode] = useState<RunMode>('wasm');
+  const [isCodeRunning, setIsCodeRunning] = useState(false);
+  const [lastDurationMs, setLastDurationMs] = useState<number | null>(null);
   const [snackbar, setSnackbar] = useState('');
 
   // Description panel state
@@ -259,13 +263,40 @@ export default function Workspace({
   };
 
   const runCode = async () => {
-    if (!isEngineReady) { setOutput('❌ Движок не готов.'); return; }
-    setOutput('⏳ Выполнение...');
-    try {
-      await compiler.run(getFiles(), setOutput, stdin);
-    } catch (err: any) {
-      setOutput(`❌ Ошибка:\n${err.message}`);
+    setIsCodeRunning(true);
+    setLastDurationMs(null);
+    const t0 = performance.now();
+
+    if (runMode === 'server') {
+      setOutput('⏳ Отправка на сервер...');
+      try {
+        const res = await executeOnServer({ language: currentLang, files: getFiles(), stdin });
+        const ms = Math.round(performance.now() - t0);
+        setLastDurationMs(ms);
+        const header = res.timedOut
+          ? `⚠️ Таймаут (${ms} мс)\n`
+          : `✅ Сервер: ${res.durationMs.toFixed(1)} мс (RTT+overhead: ${ms} мс)\n`;
+        setOutput(header + (res.stdout || '') + (res.stderr ? `\n[stderr]\n${res.stderr}` : ''));
+      } catch (err: any) {
+        setLastDurationMs(null);
+        setOutput(`❌ Ошибка сервера:\n${err.message}`);
+      }
+    } else {
+      if (!isEngineReady) { setOutput('❌ Движок не готов.'); setIsCodeRunning(false); return; }
+      setOutput('⏳ Выполнение...');
+      try {
+        await compiler.run(getFiles(), (out: string) => {
+          setOutput(out);
+        }, stdin);
+        const ms = Math.round(performance.now() - t0);
+        setLastDurationMs(ms);
+        setOutput(prev => prev + `\n\n⏱ ${ms} мс`);
+      } catch (err: any) {
+        setOutput(`❌ Ошибка:\n${err.message}`);
+      }
     }
+
+    setIsCodeRunning(false);
   };
 
   const openTab = (path: string) => {
@@ -638,7 +669,12 @@ export default function Workspace({
             <Terminal
               output={output} stdin={stdin}
               isWasmReady={isEngineReady}
-              onRunCode={runCode} onStdinChange={setStdin}
+              isRunning={isCodeRunning}
+              durationMs={lastDurationMs}
+              runMode={runMode}
+              onRunModeChange={setRunMode}
+              onRunCode={runCode}
+              onStdinChange={setStdin}
             />
           </Box>
 
