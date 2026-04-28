@@ -1,7 +1,17 @@
-﻿using DecentralizedVLab.Hubs;
+﻿using DecentralizedVLab.Courses;
+using DecentralizedVLab.Execution;
+using DecentralizedVLab.Hubs;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllers();
+builder.Services.AddSingleton<CodeRunner>();
+
+builder.Services.AddDbContext<VLabDbContext>(opt =>
+    opt.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")
+                  ?? "Data Source=/app/data/vlab.db"));
 
 // Добавляем SignalR
 builder.Services.AddSignalR()
@@ -33,9 +43,14 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 
 var app = builder.Build();
 
+using (var scope = app.Services.CreateScope())
+    scope.ServiceProvider.GetRequiredService<VLabDbContext>().Database.EnsureCreated();
+
 app.UseForwardedHeaders();
 
 app.UseCors("AllowViteFrontend");
+
+app.MapControllers();
 
 app.MapHub<SyncHub>("/sync-hub");
 

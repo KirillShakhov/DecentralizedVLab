@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import * as Y from 'yjs'
+import { Awareness } from 'y-protocols/awareness'
 import { HubConnectionBuilder, LogLevel, HubConnectionState } from '@microsoft/signalr'
 import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack'
 import type { User, Participant } from '../types'
@@ -31,6 +32,7 @@ export function useYjsSession(
   // были корректны уже на первом рендере (иначе редактор монтировался без файла
   // и MonacoBinding не создавался до переключения вкладок)
   const ydocRef = useRef<Y.Doc | null>(null)
+  const awarenessRef = useRef<Awareness | null>(null)
 
   if (!ydocRef.current) {
     const ydoc = new Y.Doc()
@@ -63,6 +65,11 @@ export function useYjsSession(
   const yfiles = ydoc.getMap<Y.Text>('files')
   const ypresence = ydoc.getMap<any>('presence')
 
+  if (!awarenessRef.current) {
+    awarenessRef.current = new Awareness(ydoc)
+  }
+  const awareness = awarenessRef.current
+
   const connectionRef = useRef<any>(null)
 
   // Инициализируем из yfiles синхронно — редактор получит правильный файл сразу
@@ -73,7 +80,7 @@ export function useYjsSession(
   })
   const [participants, setParticipants] = useState<Participant[]>([])
 
-  // ── Presence: вписываем себя при монтировании, удаляем при размонтировании ─
+  // ── Presence + Awareness: вписываем себя при монтировании ───────────────────
 
   useEffect(() => {
     if (!currentUser) return
@@ -82,7 +89,15 @@ export function useYjsSession(
       color: currentUser.color,
       role: 'student' as const,
     })
-    return () => { ypresence.delete(currentUser.id) }
+    awareness.setLocalStateField('user', {
+      userId: currentUser.id,
+      username: currentUser.username,
+      color: currentUser.color,
+    })
+    return () => {
+      ypresence.delete(currentUser.id)
+      awareness.setLocalState(null)
+    }
   }, [currentUser?.id])
 
   // ── Реактивный список участников ─────────────────────────────────────────
@@ -225,9 +240,21 @@ export function useYjsSession(
     return result
   }, [])
 
+  const setMyRole = useCallback((roleId: string) => {
+    if (!currentUser) return
+    const existing = ypresence.get(currentUser.id) ?? {}
+    ypresence.set(currentUser.id, { ...existing, labRole: roleId })
+    awareness.setLocalStateField('labRole', roleId)
+  }, [currentUser?.id])
+
+  const myRole: string | undefined = currentUser
+    ? ypresence.get(currentUser.id)?.labRole
+    : undefined
+
   return {
     ydoc,
     yfiles,
+    awareness,
     fileList,
     activeFile,
     setActiveFile,
@@ -236,5 +263,7 @@ export function useYjsSession(
     renameFile,
     getFiles,
     participants,
+    myRole,
+    setMyRole,
   }
 }

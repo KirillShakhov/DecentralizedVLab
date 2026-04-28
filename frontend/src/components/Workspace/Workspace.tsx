@@ -21,6 +21,7 @@ import MultiFileEditor from '../Editor/MultiFileEditor';
 import TestPanel from '../TestPanel/TestPanel';
 import ParticipantList from '../ParticipantList/ParticipantList';
 import ProfilerPanel from '../ProfilerPanel/ProfilerPanel';
+import RolePickerDialog from './RolePickerDialog';
 import { PythonCompiler } from '../../compilers/python';
 import { JavascriptCompiler } from '../../compilers/javascript';
 import { JavaCompiler } from '../../compilers/java';
@@ -72,6 +73,7 @@ export default function Workspace({
   const [status, setStatus] = useState({ isDownloaded: false, isDownloading: false, progress: 0 });
   const [openFiles, setOpenFiles] = useState<string[]>([]);
   const [showProfiler, setShowProfiler] = useState(false);
+  const [profilerMode, setProfilerMode] = useState<'wasm-only' | 'compare'>('wasm-only');
   const [snackbar, setSnackbar] = useState('');
 
   // Description panel state
@@ -123,8 +125,8 @@ export default function Workspace({
   [roomId]);
 
   const {
-    ydoc, yfiles, fileList, activeFile, setActiveFile,
-    addFile, deleteFile, getFiles, participants,
+    ydoc, yfiles, awareness, fileList, activeFile, setActiveFile,
+    addFile, deleteFile, getFiles, participants, myRole, setMyRole,
   } = useYjsSession(roomId, isOnline, initialFiles, user);
 
   const ymeta = ydoc.getMap<string>('meta');
@@ -163,7 +165,7 @@ export default function Workspace({
   const compiler = COMPILERS[currentLang] ?? null;
   const { results, running, runTests, summary } = useTestRunner(getFiles, compiler);
   const { result: profilerResult, running: profilerRunning, progress: profilerProgress, runBenchmark } =
-    useProfiler(getFiles, compiler, currentLang);
+    useProfiler(getFiles, compiler, currentLang, profilerMode);
 
   const hasTests = (resolvedLab?.testCases?.length ?? 0) > 0;
   const hasDescription = !!resolvedLab?.description;
@@ -290,7 +292,20 @@ export default function Workspace({
   };
 
   const roomCode = roomId.slice(0, 8).toUpperCase();
-  const readOnlyFiles = resolvedLab?.files?.filter(f => f.readOnly).map(f => f.path) ?? [];
+  const labRoles = resolvedLab?.roles
+  const showRolePicker = !!labRoles && !myRole
+
+  // Files owned by other roles are also read-only for this user
+  const readOnlyFiles = useMemo(() => {
+    const base = resolvedLab?.files?.filter(f => f.readOnly).map(f => f.path) ?? []
+    if (!labRoles || !myRole) return base
+    const myRole$ = labRoles.find(r => r.id === myRole)
+    const otherFiles = labRoles
+      .filter(r => r.id !== myRole)
+      .flatMap(r => r.ownedFiles)
+      .filter(f => !myRole$?.ownedFiles.includes(f))
+    return [...new Set([...base, ...otherFiles])]
+  }, [resolvedLab?.files, labRoles, myRole])
   const effectiveOpenFiles = openFiles.length > 0 ? openFiles : fileList.slice(0, 1);
 
   // Next lab button visible in toolbar when description panel is not showing it
@@ -479,6 +494,7 @@ export default function Workspace({
                   <Typography variant="caption" fontWeight={700} color="primary.main"
                     sx={{ textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
                     Задание{labIndex && totalLabs ? ` ${labIndex}/${totalLabs}` : ''}
+                    {myRole && labRoles && ` · ${labRoles.find(r => r.id === myRole)?.label ?? ''}`}
                   </Typography>
                   <Tooltip title="Свернуть">
                     <IconButton size="small" onClick={() => toggleDescCollapsed(true)} sx={{ p: 0.25 }}>
@@ -509,7 +525,7 @@ export default function Workspace({
                   <Typography variant="body2" color="text.primary" sx={{
                     whiteSpace: 'pre-wrap', lineHeight: 1.85, fontSize: '13px',
                   }}>
-                    {resolvedLab!.description}
+                    {(myRole && labRoles?.find(r => r.id === myRole)?.description) || resolvedLab!.description}
                   </Typography>
                 </Box>
 
@@ -608,6 +624,7 @@ export default function Workspace({
               yfiles={yfiles} activeFile={activeFile}
               openFiles={effectiveOpenFiles}
               onSwitchTab={openTab} onCloseTab={closeTab}
+              awareness={awareness}
             />
           )}
         </Box>
@@ -644,6 +661,14 @@ export default function Workspace({
       result={profilerResult} running={profilerRunning}
       progress={profilerProgress} isEngineReady={isEngineReady}
       onRunBenchmark={runBenchmark}
+      mode={profilerMode} onModeChange={setProfilerMode}
+    />
+
+    <RolePickerDialog
+      open={showRolePicker}
+      roles={labRoles ?? []}
+      participants={participants}
+      onSelect={setMyRole}
     />
 
     <Snackbar

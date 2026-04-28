@@ -4,7 +4,11 @@ import { courseDB, sessionDB } from '../db'
 
 // ─── Courses ─────────────────────────────────────────────────────────────────
 
-export function useCourseStore(authorId: string | undefined) {
+export function useCourseStore(
+  authorId: string | undefined,
+  onPush?: (course: Course) => void,
+  onDelete?: (id: string) => void,
+) {
   const [courses, setCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -22,13 +26,15 @@ export function useCourseStore(authorId: string | undefined) {
 
   const saveCourse = useCallback(async (course: Course) => {
     await courseDB.save(course)
+    onPush?.(course)
     await reload()
-  }, [reload])
+  }, [reload, onPush])
 
   const deleteCourse = useCallback(async (id: string) => {
     await courseDB.delete(id)
+    onDelete?.(id)
     setCourses(prev => prev.filter(c => c.id !== id))
-  }, [])
+  }, [onDelete])
 
   const myCourses = authorId
     ? courses.filter(c => c.authorId === authorId)

@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import * as Y from 'yjs'
+import { Awareness } from 'y-protocols/awareness'
 import { MonacoBinding } from 'y-monaco'
 import { Box, IconButton, useTheme } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
@@ -21,6 +22,7 @@ interface Props {
   openFiles: string[]
   onCloseTab: (path: string) => void
   onSwitchTab: (path: string) => void
+  awareness?: Awareness
 }
 
 const FILE_ICONS: Record<string, string> = {
@@ -33,7 +35,7 @@ function getTabIcon(path: string) {
 }
 
 export default function MultiFileEditor({
-  yfiles, activeFile, openFiles, onCloseTab, onSwitchTab,
+  yfiles, activeFile, openFiles, onCloseTab, onSwitchTab, awareness,
 }: Props) {
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
@@ -102,9 +104,9 @@ export default function MultiFileEditor({
     }
 
     disposeActiveBinding()
-    activeBindingRef.current = new MonacoBinding(ytext, model, new Set([editor]))
+    activeBindingRef.current = new MonacoBinding(ytext, model, new Set([editor]), awareness)
     activeBindingPathRef.current = filePath
-  }, [yfiles, disposeActiveBinding])
+  }, [yfiles, disposeActiveBinding, awareness])
 
   useEffect(() => {
     if (editorRef.current && monacoRef.current && resolvedActiveFile) {

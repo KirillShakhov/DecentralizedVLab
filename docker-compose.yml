@@ -17,6 +17,8 @@ services:
       dockerfile: DecentralizedVLab/Dockerfile
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
+    volumes:
+      - ./data:/app/data
     networks:
       - vlab-network
 

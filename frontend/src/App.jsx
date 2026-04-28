@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import TopBar from './components/TopBar/TopBar';
@@ -10,10 +10,19 @@ import CourseEditorPage from './pages/CourseEditorPage';
 import SessionPage from './pages/SessionPage';
 import { useAppManager } from './hooks/useAppManager';
 import { useUserProfile } from './hooks/useUserProfile';
+import { useCourseSyncManager } from './hooks/useCourseSyncManager';
+import { SyncContext } from './contexts/SyncContext';
 
 function App() {
     const appManager = useAppManager();
     const { user, isProfileReady, createProfile } = useUserProfile();
+    const syncManager = useCourseSyncManager();
+
+    useEffect(() => {
+        if (appManager.isAppReady) {
+            syncManager.runStartupSync(appManager.isOnline);
+        }
+    }, [appManager.isAppReady]);  // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!appManager.isAppReady) {
         return (
@@ -34,6 +43,7 @@ function App() {
     }
 
     return (
+        <SyncContext.Provider value={syncManager}>
         <Router>
                 <ProfileSetupDialog
                 open={!isProfileReady}
@@ -65,6 +75,7 @@ function App() {
                 </Box>
             </Box>
         </Router>
+        </SyncContext.Provider>
     );
 }
 
