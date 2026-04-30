@@ -10,29 +10,22 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CloseIcon from '@mui/icons-material/Close'
 import type { BenchmarkResult } from '../../hooks/useProfiler'
 
-// ─── Константы для оценки серверного подхода ────────────────────────────────
-// Основано на публичных данных: Codeforces judge ~200ms, Stepik ~300-500ms warm
-const DOCKER_WARM_OVERHEAD_MS = 150   // компиляция + запуск контейнера (warm)
-const DOCKER_COLD_OVERHEAD_MS = 450   // холодный старт контейнера
-
-// ─── Мини-гистограмма ────────────────────────────────────────────────────────
+const DOCKER_WARM_OVERHEAD_MS = 150
+const DOCKER_COLD_OVERHEAD_MS = 450
 
 function Histogram({ times }: { times: number[] }) {
   if (times.length === 0) return null
-
   const BINS = 20
   const min = Math.min(...times)
   const max = Math.max(...times)
   const range = max - min || 1
   const binSize = range / BINS
-
   const bins = Array(BINS).fill(0)
   times.forEach(t => {
     const idx = Math.min(Math.floor((t - min) / binSize), BINS - 1)
     bins[idx]++
   })
   const maxCount = Math.max(...bins)
-
   return (
     <Box>
       <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
@@ -43,17 +36,13 @@ function Histogram({ times }: { times: number[] }) {
           const height = maxCount > 0 ? (count / maxCount) * 100 : 0
           const isP95 = i >= Math.floor(BINS * 0.95)
           return (
-            <Tooltip
-              key={i}
-              title={`${Math.round(min + i * binSize)}–${Math.round(min + (i + 1) * binSize)} мс: ${count} замеров`}
-            >
+            <Tooltip key={i} title={`${Math.round(min + i * binSize)}–${Math.round(min + (i + 1) * binSize)} мс: ${count} замеров`}>
               <Box sx={{
                 flex: 1,
                 height: `${Math.max(height, count > 0 ? 4 : 0)}%`,
                 bgcolor: isP95 ? 'warning.main' : 'primary.main',
                 borderRadius: '2px 2px 0 0',
                 opacity: 0.85,
-                transition: 'opacity 0.1s',
                 '&:hover': { opacity: 1 },
                 cursor: 'default',
               }} />
@@ -69,13 +58,8 @@ function Histogram({ times }: { times: number[] }) {
   )
 }
 
-// ─── Строка сравнения ─────────────────────────────────────────────────────────
-
-function CompareRow({ label, wasm, server, highlight }: {
-  label: string
-  wasm: string
-  server: string
-  highlight?: boolean
+function CompareRow({ label, wasm, server, serverLabel, highlight }: {
+  label: string; wasm: string; server: string; serverLabel?: string; highlight?: boolean
 }) {
   return (
     <Box sx={{
@@ -86,38 +70,44 @@ function CompareRow({ label, wasm, server, highlight }: {
     }}>
       <Typography variant="body2" color="text.secondary">{label}</Typography>
       <Typography variant="body2" fontWeight={highlight ? 'bold' : 'normal'} sx={{ color: 'success.main' }}>{wasm}</Typography>
-      <Typography variant="body2" sx={{ color: 'error.main' }}>{server}</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Typography variant="body2" sx={{ color: 'error.main' }}>{server}</Typography>
+        {serverLabel && (
+          <Chip label={serverLabel} size="small" sx={{ height: 16, fontSize: 10,
+            bgcolor: serverLabel === 'реальный' ? 'rgba(5,150,105,0.12)' : 'rgba(100,100,100,0.12)',
+            color: serverLabel === 'реальный' ? 'success.main' : 'text.secondary',
+          }} />
+        )}
+      </Box>
     </Box>
   )
 }
 
-// ─── Генерация Markdown таблицы ───────────────────────────────────────────────
-
-function generateMarkdown(result: BenchmarkResult, rtt: number | null): string {
-  const warm = (rtt ?? 50) + DOCKER_WARM_OVERHEAD_MS
-  const cold = (rtt ?? 50) + DOCKER_COLD_OVERHEAD_MS
-  const speedup = (warm / result.stats.avg).toFixed(1)
+function generateMarkdown(result: BenchmarkResult, rtt: number | null, mode: 'wasm-only' | 'compare'): string {
+  const sr = result.serverResult
+  const isReal = mode === 'compare' && sr && !sr.timedOut
+  const warmMs = isReal ? Math.round(sr!.durationMs) : (rtt ?? 50) + DOCKER_WARM_OVERHEAD_MS
+  const coldMs = isReal ? Math.round(sr!.durationMs) : (rtt ?? 50) + DOCKER_COLD_OVERHEAD_MS
+  const speedup = (warmMs / result.stats.avg).toFixed(1)
+  const sourceNote = isReal
+    ? `> Серверный замер: реальное измерение на Docker-контейнере.`
+    : `> Оценка серверного подхода: RTT ${rtt ?? '~50'} мс + Docker warm overhead ~${DOCKER_WARM_OVERHEAD_MS} мс.`
 
   return [
     `## Результаты бенчмарка — ${result.language.toUpperCase()} (${new Date(result.timestamp).toLocaleDateString('ru')})`,
     '',
-    `**Итераций:** ${result.iterations} | **RTT до сервера:** ${rtt != null ? rtt + ' мс' : 'н/д'}`,
+    `**Итераций:** ${result.iterations} | **RTT до сервера:** ${rtt != null ? rtt + ' мс' : 'н/д'} | **Режим:** ${isReal ? 'реальный замер' : 'оценка'}`,
     '',
-    '| Метрика | WASM (клиент) | Серверный подход (оценка) |',
+    `| Метрика | WASM (клиент) | Серверный подход (${isReal ? 'реальный' : 'оценка'}) |`,
     '|---------|:------------:|:-------------------------:|',
-    `| Минимум | ${result.stats.min} мс | ${(rtt ?? 50) + DOCKER_WARM_OVERHEAD_MS} мс |`,
-    `| Максимум | ${result.stats.max} мс | ${(rtt ?? 50) + DOCKER_COLD_OVERHEAD_MS} мс |`,
-    `| Среднее | ${result.stats.avg} мс | ${warm} мс |`,
-    `| Медиана | ${result.stats.median} мс | ${warm} мс |`,
-    `| P95 | ${result.stats.p95} мс | ${cold} мс |`,
+    `| Среднее | ${result.stats.avg} мс | ${warmMs} мс |`,
+    `| Медиана | ${result.stats.median} мс | ${warmMs} мс |`,
+    `| P95 | ${result.stats.p95} мс | ${coldMs} мс |`,
     `| **Ускорение** | — | **в ${speedup}x раза** |`,
     '',
-    `> Оценка серверного подхода: RTT ${rtt ?? '~50'} мс + Docker warm overhead ~${DOCKER_WARM_OVERHEAD_MS} мс.`,
-    `> Источник: реальные замеры задержек Codeforces Judge / Stepik (public data).`,
+    sourceNote,
   ].join('\n')
 }
-
-// ─── Основной компонент ───────────────────────────────────────────────────────
 
 interface Props {
   open: boolean
@@ -127,42 +117,31 @@ interface Props {
   progress: number
   isEngineReady: boolean
   onRunBenchmark: (iterations: number) => void
+  mode: 'wasm-only' | 'compare'
+  onModeChange: (mode: 'wasm-only' | 'compare') => void
 }
 
 export default function ProfilerPanel({
-  open, onClose, result, running, progress, isEngineReady, onRunBenchmark,
+  open, onClose, result, running, progress, isEngineReady, onRunBenchmark, mode, onModeChange,
 }: Props) {
   const [iterations, setIterations] = useState(100)
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
     if (!result) return
-    const md = generateMarkdown(result, result.networkRtt)
-    await navigator.clipboard.writeText(md)
+    await navigator.clipboard.writeText(generateMarkdown(result, result.networkRtt, mode))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const warmServer = result
-    ? (result.networkRtt ?? 50) + DOCKER_WARM_OVERHEAD_MS
-    : null
-  const coldServer = result
-    ? (result.networkRtt ?? 50) + DOCKER_COLD_OVERHEAD_MS
-    : null
-  const speedup = result && warmServer
-    ? (warmServer / result.stats.avg).toFixed(1)
-    : null
+  const sr = result?.serverResult
+  const isRealServer = mode === 'compare' && sr && !sr.timedOut
+  const serverAvg = isRealServer ? Math.round(sr!.durationMs) : result ? (result.networkRtt ?? 50) + DOCKER_WARM_OVERHEAD_MS : null
+  const serverLabel = isRealServer ? 'реальный' : 'оценка'
+  const speedup = result && serverAvg ? (serverAvg / result.stats.avg).toFixed(1) : null
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="sm"
-      fullWidth
-      PaperProps={{
-        sx: { borderRadius: 3 }
-      }}
-    >
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 1 }}>
         <SpeedIcon sx={{ color: 'primary.main' }} />
         <Typography variant="h6" fontWeight={700} sx={{ flexGrow: 1 }}>
@@ -175,24 +154,28 @@ export default function ProfilerPanel({
 
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
-        {/* Настройки запуска */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>
-            Итераций:
-          </Typography>
+        {/* Режим */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+          <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>Режим:</Typography>
           <ToggleButtonGroup
-            value={iterations}
+            value={mode}
             exclusive
-            onChange={(_, v) => v && setIterations(v)}
+            onChange={(_, v) => v && onModeChange(v)}
             size="small"
           >
+            <ToggleButton value="wasm-only" sx={{ px: 2 }}>Только WASM</ToggleButton>
+            <ToggleButton value="compare" sx={{ px: 2 }}>Сравнить с сервером</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+
+        {/* Настройки запуска */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>Итераций:</Typography>
+          <ToggleButtonGroup value={iterations} exclusive onChange={(_, v) => v && setIterations(v)} size="small">
             {[10, 50, 100, 500].map(n => (
-              <ToggleButton key={n} value={n} sx={{ px: 2 }}>
-                {n}
-              </ToggleButton>
+              <ToggleButton key={n} value={n} sx={{ px: 2 }}>{n}</ToggleButton>
             ))}
           </ToggleButtonGroup>
-
           <Button
             variant="contained"
             onClick={() => onRunBenchmark(iterations)}
@@ -204,59 +187,50 @@ export default function ProfilerPanel({
           </Button>
         </Box>
 
-        {/* Прогресс-бар */}
-        {running && (
-          <LinearProgress
-            variant="determinate"
-            value={progress}
-            sx={{ borderRadius: 1 }}
-          />
-        )}
+        {running && <LinearProgress variant="determinate" value={progress} sx={{ borderRadius: 1 }} />}
 
         {!isEngineReady && (
-          <Alert severity="warning" sx={{ py: 0.5 }}>
-            Сначала инициализируйте движок в рабочей области
-          </Alert>
+          <Alert severity="warning" sx={{ py: 0.5 }}>Сначала инициализируйте движок в рабочей области</Alert>
         )}
 
-        {/* Результаты */}
         {result && !running && (
           <>
-            {/* Гистограмма */}
             <Histogram times={result.times} />
-
             <Divider />
 
-            {/* Таблица сравнения */}
             <Box>
-              <Box sx={{
-                display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
-                px: 1.5, py: 0.5, mb: 0.5,
-              }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', px: 1.5, py: 0.5, mb: 0.5 }}>
                 <Typography variant="caption" color="text.secondary" fontWeight="bold">Метрика</Typography>
                 <Typography variant="caption" color="text.secondary" fontWeight="bold">WASM (клиент)</Typography>
-                <Typography variant="caption" color="text.secondary" fontWeight="bold">Сервер (оценка)</Typography>
+                <Typography variant="caption" color="text.secondary" fontWeight="bold">
+                  Сервер ({isRealServer ? 'реальный' : 'оценка'})
+                </Typography>
               </Box>
 
               <CompareRow label="Минимум"
                 wasm={`${result.stats.min} мс`}
-                server={`${(result.networkRtt ?? 50) + DOCKER_WARM_OVERHEAD_MS} мс`}
+                server={isRealServer ? `${Math.round(sr!.durationMs)} мс` : `${(result.networkRtt ?? 50) + DOCKER_WARM_OVERHEAD_MS} мс`}
+                serverLabel={serverLabel}
               />
               <CompareRow label="Максимум"
                 wasm={`${result.stats.max} мс`}
-                server={`${coldServer} мс`}
+                server={isRealServer ? `${Math.round(sr!.durationMs)} мс` : `${(result.networkRtt ?? 50) + DOCKER_COLD_OVERHEAD_MS} мс`}
+                serverLabel={serverLabel}
               />
               <CompareRow label="Среднее" highlight
                 wasm={`${result.stats.avg} мс`}
-                server={`${warmServer} мс`}
+                server={`${serverAvg} мс`}
+                serverLabel={serverLabel}
               />
               <CompareRow label="Медиана"
                 wasm={`${result.stats.median} мс`}
-                server={`${warmServer} мс`}
+                server={`${serverAvg} мс`}
+                serverLabel={serverLabel}
               />
               <CompareRow label="P95"
                 wasm={`${result.stats.p95} мс`}
-                server={`${coldServer} мс`}
+                server={isRealServer ? `${Math.round(sr!.durationMs)} мс` : `${(result.networkRtt ?? 50) + DOCKER_COLD_OVERHEAD_MS} мс`}
+                serverLabel={serverLabel}
               />
 
               {speedup && (
@@ -269,7 +243,11 @@ export default function ProfilerPanel({
                     <Typography variant="body2" color="text.secondary">
                       Ускорение WASM vs серверный подход
                     </Typography>
-                    {result.networkRtt != null && (
+                    {isRealServer ? (
+                      <Typography variant="caption" sx={{ color: 'success.main' }}>
+                        Реальный замер на сервере: {Math.round(sr!.durationMs)} мс
+                      </Typography>
+                    ) : result.networkRtt != null && (
                       <Typography variant="caption" color="text.secondary">
                         RTT до сервера: {result.networkRtt} мс · Docker warm: ~{DOCKER_WARM_OVERHEAD_MS} мс
                       </Typography>
@@ -281,21 +259,23 @@ export default function ProfilerPanel({
                   />
                 </Box>
               )}
+
+              {mode === 'compare' && sr?.timedOut && (
+                <Alert severity="warning" sx={{ mt: 1 }}>Серверное выполнение превысило таймаут (10 с)</Alert>
+              )}
+              {mode === 'compare' && !sr && !running && (
+                <Alert severity="info" sx={{ mt: 1 }}>Запустите бенчмарк для получения реального серверного замера</Alert>
+              )}
             </Box>
 
             <Divider />
 
-            {/* Мета */}
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
               <Chip size="small" label={`${result.iterations} итераций`} />
               <Chip size="small" label={result.language.toUpperCase()} />
-              {result.networkRtt != null && (
-                <Chip size="small" label={`RTT: ${result.networkRtt} мс`} />
-              )}
-              <Chip size="small"
-                label={new Date(result.timestamp).toLocaleTimeString('ru')}
-                sx={{ ml: 'auto' }}
-              />
+              {result.networkRtt != null && <Chip size="small" label={`RTT: ${result.networkRtt} мс`} />}
+              {isRealServer && <Chip size="small" label="Реальный замер" color="success" />}
+              <Chip size="small" label={new Date(result.timestamp).toLocaleTimeString('ru')} sx={{ ml: 'auto' }} />
             </Box>
           </>
         )}

@@ -1,16 +1,19 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Box, Typography, Button, Card, CardContent, CardActionArea,
   Chip, Skeleton, IconButton, Tooltip, Breadcrumbs, Link, Avatar,
+  LinearProgress,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import EditIcon from '@mui/icons-material/Edit'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import SchoolIcon from '@mui/icons-material/School'
+import CheckIcon from '@mui/icons-material/Check'
 import type { Course, User } from '../types'
-import { courseDB } from '../db'
+import { courseDB, sessionDB } from '../db'
 import { useRecentSessions } from '../hooks/useCourseStore'
+import { getCompletedLabs } from '../utils/progress'
 
 const LANG_LABELS: Record<string, string> = {
   python: 'Python', javascript: 'JavaScript',
@@ -41,6 +44,11 @@ export default function CoursePage({ user }: Props) {
     })
   }, [courseId])
 
+  const completedLabs = useMemo(() =>
+    course ? getCompletedLabs(course.id) : new Set<string>(),
+    [course],
+  )
+
   const handleStartLab = async (labId: string) => {
     if (!course) return
     const lab = course.labs.find(l => l.id === labId)
@@ -48,6 +56,17 @@ export default function CoursePage({ user }: Props) {
 
     setStartingLab(labId)
     try {
+      // Ищем существующую сессию для этой лабы (самую свежую)
+      const all = await sessionDB.getAll()
+      const existing = all
+        .filter(s => s.labId === labId && s.courseId === course.id)
+        .sort((a, b) => b.lastActive - a.lastActive)[0]
+
+      if (existing) {
+        navigate(`/session/${existing.id}`)
+        return
+      }
+
       const sessionId = await createSession(
         lab.id, course.id, lab.title, course.title, lab.language,
       )
@@ -76,6 +95,10 @@ export default function CoursePage({ user }: Props) {
   }
 
   const isOwner = course.authorId === user.id
+  const sortedLabs = course.labs.slice().sort((a, b) => a.order - b.order)
+  const totalLabs = sortedLabs.length
+  const completedCount = completedLabs.size
+  const progressPct = totalLabs > 0 ? (completedCount / totalLabs) * 100 : 0
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', px: 3, py: 4 }}>
@@ -108,7 +131,7 @@ export default function CoursePage({ user }: Props) {
               }}>
                 <SchoolIcon sx={{ fontSize: 28, color: 'primary.main' }} />
               </Box>
-              <Box sx={{ minWidth: 0 }}>
+              <Box sx={{ minWidth: 0, flexGrow: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                   <IconButton size="small" onClick={() => navigate('/')} sx={{ color: 'text.secondary', mr: -0.5 }}>
                     <ArrowBackIcon fontSize="small" />
@@ -118,7 +141,7 @@ export default function CoursePage({ user }: Props) {
                 <Typography color="text.secondary" sx={{ mb: 2, lineHeight: 1.6 }}>
                   {course.description || 'Без описания'}
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
                   <Chip
                     size="small"
                     label={`Автор: ${course.authorName}`}
@@ -126,10 +149,49 @@ export default function CoursePage({ user }: Props) {
                   />
                   <Chip
                     size="small"
-                    label={`${course.labs.length} лаб.`}
+                    label={`${totalLabs} лаб.`}
                     sx={{ bgcolor: 'rgba(79,70,229,0.07)', color: 'primary.main', fontWeight: 500 }}
                   />
+                  {completedCount > 0 && (
+                    <Chip
+                      size="small"
+                      icon={<CheckIcon sx={{ fontSize: '12px !important' }} />}
+                      label={completedCount === totalLabs ? 'Курс завершён' : `${completedCount} из ${totalLabs} выполнено`}
+                      sx={{
+                        bgcolor: completedCount === totalLabs ? 'rgba(5,150,105,0.12)' : 'rgba(5,150,105,0.07)',
+                        color: 'success.main',
+                        fontWeight: 600,
+                        border: '1px solid rgba(5,150,105,0.2)',
+                      }}
+                    />
+                  )}
                 </Box>
+
+                {/* Прогресс */}
+                {totalLabs > 0 && (
+                  <Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary" fontWeight={500}>
+                        Прогресс курса
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                        {completedCount}/{totalLabs}
+                      </Typography>
+                    </Box>
+                    <LinearProgress
+                      variant="determinate"
+                      value={progressPct}
+                      sx={{
+                        height: 6, borderRadius: 3,
+                        bgcolor: 'action.hover',
+                        '& .MuiLinearProgress-bar': {
+                          borderRadius: 3,
+                          bgcolor: completedCount === totalLabs ? 'success.main' : 'primary.main',
+                        },
+                      }}
+                    />
+                  </Box>
+                )}
               </Box>
             </Box>
             {isOwner && (
@@ -151,7 +213,7 @@ export default function CoursePage({ user }: Props) {
         Лабораторные работы
       </Typography>
 
-      {course.labs.length === 0 ? (
+      {sortedLabs.length === 0 ? (
         <Card sx={{ border: '2px dashed', borderColor: 'divider', boxShadow: 'none', bgcolor: 'transparent' }}>
           <CardContent sx={{ py: 5, textAlign: 'center' }}>
             <Typography color="text.secondary">В этом курсе пока нет лабораторных</Typography>
@@ -164,12 +226,12 @@ export default function CoursePage({ user }: Props) {
         </Card>
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {course.labs
-            .slice()
-            .sort((a, b) => a.order - b.order)
-            .map((lab, idx) => (
+          {sortedLabs.map((lab, idx) => {
+            const isDone = completedLabs.has(lab.id)
+            return (
               <Card key={lab.id} sx={{
                 transition: 'box-shadow 0.2s, transform 0.15s',
+                border: isDone ? '1px solid rgba(5,150,105,0.25)' : undefined,
                 '&:hover': {
                   boxShadow: '0 6px 20px rgba(0,0,0,0.1)',
                   transform: 'translateY(-1px)',
@@ -178,13 +240,14 @@ export default function CoursePage({ user }: Props) {
                 <CardActionArea onClick={() => handleStartLab(lab.id)}>
                   <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2.5, py: 2 }}>
 
-                    {/* Номер */}
+                    {/* Номер / галочка */}
                     <Avatar sx={{
                       width: 38, height: 38, borderRadius: '10px', flexShrink: 0,
-                      bgcolor: 'rgba(79,70,229,0.08)',
-                      color: 'primary.main', fontWeight: 700, fontSize: 14,
+                      bgcolor: isDone ? 'rgba(5,150,105,0.12)' : 'rgba(79,70,229,0.08)',
+                      color: isDone ? 'success.main' : 'primary.main',
+                      fontWeight: 700, fontSize: 14,
                     }}>
-                      {idx + 1}
+                      {isDone ? <CheckIcon fontSize="small" /> : idx + 1}
                     </Avatar>
 
                     {/* Инфо */}
@@ -221,15 +284,17 @@ export default function CoursePage({ user }: Props) {
                     </Box>
 
                     {/* Кнопка */}
-                    <Tooltip title="Открыть лабораторную">
+                    <Tooltip title={isDone ? 'Повторить' : 'Открыть лабораторную'}>
                       <IconButton
                         size="small"
-                        color="primary"
+                        color={isDone ? 'success' : 'primary'}
                         disabled={startingLab === lab.id}
                         onClick={e => { e.stopPropagation(); handleStartLab(lab.id) }}
                         sx={{
-                          bgcolor: 'rgba(79,70,229,0.08)',
-                          '&:hover': { bgcolor: 'rgba(79,70,229,0.15)' },
+                          bgcolor: isDone ? 'rgba(5,150,105,0.08)' : 'rgba(79,70,229,0.08)',
+                          '&:hover': {
+                            bgcolor: isDone ? 'rgba(5,150,105,0.15)' : 'rgba(79,70,229,0.15)',
+                          },
                           flexShrink: 0,
                         }}
                       >
@@ -239,7 +304,8 @@ export default function CoursePage({ user }: Props) {
                   </CardContent>
                 </CardActionArea>
               </Card>
-            ))}
+            )
+          })}
         </Box>
       )}
     </Box>

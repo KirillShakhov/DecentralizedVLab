@@ -1,5 +1,8 @@
 ﻿# Используем образ aspnet, так как нам нужен веб-сервер, а не просто консольный рантайм
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+USER root
+RUN apt-get update && apt-get install -y python3 nodejs sqlite3 --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 USER $APP_UID
 WORKDIR /app
 EXPOSE 8080

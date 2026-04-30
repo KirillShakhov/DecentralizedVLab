@@ -14,7 +14,7 @@ import FileUploadIcon from '@mui/icons-material/FileUpload'
 import EditIcon from '@mui/icons-material/Edit'
 import type { Course, User } from '../types'
 import { useCourseStore, useRecentSessions } from '../hooks/useCourseStore'
-import { courseDB } from '../db'
+import { useSyncContext } from '../contexts/SyncContext'
 
 const LANG_LABELS: Record<string, string> = {
   python: 'Python', javascript: 'JavaScript', lua: 'Lua', sqlite: 'SQLite', java: 'Java',
@@ -40,7 +40,8 @@ interface Props {
 
 export default function HomePage({ user }: Props) {
   const navigate = useNavigate()
-  const { myCourses, loading, deleteCourse, reload } = useCourseStore(user.id)
+  const { pushCourse, deleteFromServer } = useSyncContext()
+  const { myCourses, loading, saveCourse, deleteCourse, reload } = useCourseStore(user.id, pushCourse, deleteFromServer)
   const { sessions, deleteSession } = useRecentSessions()
   const [snackbar, setSnackbar] = React.useState('')
   const importRef = useRef<HTMLInputElement>(null)
@@ -63,8 +64,7 @@ export default function HomePage({ user }: Props) {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       }
-      await courseDB.save(course)
-      await reload()
+      await saveCourse(course)
       setSnackbar(`Курс "${course.title}" импортирован`)
     } catch (err: any) {
       setSnackbar(`Ошибка импорта: ${err.message}`)

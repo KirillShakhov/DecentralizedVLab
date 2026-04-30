@@ -19,6 +19,13 @@ export interface TestCase {
   isHidden: boolean       // скрытые тесты: студент видит только ✓/✗
 }
 
+export interface LabRole {
+  id: string           // 'a' | 'b' | ...
+  label: string        // "Студент А — реализует алгоритм"
+  description: string  // роль-специфичное задание (Markdown)
+  ownedFiles: string[] // пути файлов, доступных только этой роли
+}
+
 export interface Lab {
   id: string
   title: string
@@ -27,6 +34,7 @@ export interface Lab {
   files: FileTemplate[]
   testCases: TestCase[]
   order: number
+  roles?: LabRole[]     // если задан → совместная лаба, нельзя решить в одиночку
 }
 
 export interface Course {

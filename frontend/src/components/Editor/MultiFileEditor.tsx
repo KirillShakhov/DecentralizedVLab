@@ -1,8 +1,9 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import * as Y from 'yjs'
+import { Awareness } from 'y-protocols/awareness'
 import { MonacoBinding } from 'y-monaco'
-import { Box, IconButton } from '@mui/material'
+import { Box, IconButton, useTheme } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 
 function monacoLang(filePath: string): string {
@@ -21,6 +22,8 @@ interface Props {
   openFiles: string[]
   onCloseTab: (path: string) => void
   onSwitchTab: (path: string) => void
+  awareness?: Awareness
+  readOnlyFiles?: string[]
 }
 
 const FILE_ICONS: Record<string, string> = {
@@ -33,8 +36,20 @@ function getTabIcon(path: string) {
 }
 
 export default function MultiFileEditor({
-  yfiles, activeFile, openFiles, onCloseTab, onSwitchTab,
+  yfiles, activeFile, openFiles, onCloseTab, onSwitchTab, awareness, readOnlyFiles = [],
 }: Props) {
+  const theme = useTheme()
+  const isDark = theme.palette.mode === 'dark'
+
+  const tabBarBg = isDark ? '#252526' : '#f1f5f9'
+  const tabBarBorder = isDark ? '#1e1e1e' : theme.palette.divider
+  const tabActiveBg = isDark ? '#1e1e1e' : '#ffffff'
+  const tabHoverBg = isDark ? '#2a2d2e' : '#e8ecf0'
+  const tabTextActive = isDark ? '#e2e8f0' : '#1e293b'
+  const tabTextInactive = isDark ? '#8b9baf' : '#64748b'
+  const editorBg = isDark ? '#1e1e1e' : '#ffffff'
+  const monacoTheme = isDark ? 'vs-dark' : 'vs'
+
   const [filesVersion, setFilesVersion] = useState(0)
   const resolvedActiveFile = activeFile || openFiles[0] || ''
   const editorRef = useRef<any>(null)
@@ -82,25 +97,18 @@ export default function MultiFileEditor({
     if (model.getLanguageId() !== lang) {
       monacoInstance.editor.setModelLanguage(model, lang)
     }
-    if (model.getValue() !== ytextValue) {
-      model.setValue(ytextValue)
-    }
 
     editor.setModel(model)
+    editor.updateOptions({ readOnly: readOnlyFiles.includes(filePath) })
 
     if (activeBindingPathRef.current === filePath && activeBindingRef.current) {
       return
     }
 
     disposeActiveBinding()
-    activeBindingRef.current = new MonacoBinding(ytext, model, new Set([editor]))
+    activeBindingRef.current = new MonacoBinding(ytext, model, new Set([editor]), awareness)
     activeBindingPathRef.current = filePath
-
-    const syncedValue = ytext.toString()
-    if (model.getValue() !== syncedValue) {
-      model.setValue(syncedValue)
-    }
-  }, [yfiles, disposeActiveBinding])
+  }, [yfiles, disposeActiveBinding, awareness, readOnlyFiles])
 
   useEffect(() => {
     if (editorRef.current && monacoRef.current && resolvedActiveFile) {
@@ -149,11 +157,11 @@ export default function MultiFileEditor({
   }, [disposeActiveBinding])
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#1e1e1e' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: editorBg }}>
       {/* Вкладки */}
       <Box sx={{
-        borderBottom: '1px solid #2a2a2a',
-        bgcolor: '#252526',
+        borderBottom: `1px solid ${tabBarBorder}`,
+        bgcolor: tabBarBg,
         display: 'flex', alignItems: 'center', minHeight: 36, overflowX: 'auto',
         flexShrink: 0,
       }}>
@@ -166,17 +174,17 @@ export default function MultiFileEditor({
               sx={{
                 display: 'flex', alignItems: 'center', gap: 0.5,
                 px: 1.5, py: 0.5, cursor: 'pointer', flexShrink: 0,
-                borderRight: '1px solid #1e1e1e',
-                bgcolor: isActive ? '#1e1e1e' : 'transparent',
+                borderRight: `1px solid ${tabBarBorder}`,
+                bgcolor: isActive ? tabActiveBg : 'transparent',
                 borderBottom: isActive ? '2px solid #818cf8' : '2px solid transparent',
                 '&:hover .tab-close': { opacity: 1 },
-                '&:hover': { bgcolor: isActive ? '#1e1e1e' : '#2a2d2e' },
+                '&:hover': { bgcolor: isActive ? tabActiveBg : tabHoverBg },
               }}
             >
               <span style={{ fontSize: 12 }}>{getTabIcon(path)}</span>
               <span style={{
                 fontSize: 12.5,
-                color: isActive ? '#e2e8f0' : '#8b9baf',
+                color: isActive ? tabTextActive : tabTextInactive,
                 maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 fontFamily: '"JetBrains Mono", monospace',
                 fontWeight: isActive ? 500 : 400,
@@ -190,7 +198,9 @@ export default function MultiFileEditor({
                   onClick={e => { e.stopPropagation(); onCloseTab(path) }}
                   sx={{
                     opacity: 0, transition: 'opacity 0.15s',
-                    p: 0.1, color: '#666', '&:hover': { color: '#ccc' },
+                    p: 0.1,
+                    color: isDark ? '#666' : '#94a3b8',
+                    '&:hover': { color: isDark ? '#ccc' : '#1e293b' },
                   }}
                 >
                   <CloseIcon sx={{ fontSize: 12 }} />
@@ -208,7 +218,7 @@ export default function MultiFileEditor({
           language={resolvedActiveFile ? monacoLang(resolvedActiveFile) : 'plaintext'}
           defaultValue={resolvedActiveFile ? (yfiles.get(resolvedActiveFile)?.toString() ?? '') : ''}
           height="100%"
-          theme="vs-dark"
+          theme={monacoTheme}
           onMount={handleMount}
           options={{
             minimap: { enabled: false },

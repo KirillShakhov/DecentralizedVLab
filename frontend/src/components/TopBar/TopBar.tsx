@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
     AppBar, Toolbar, Box, Button, Chip, IconButton,
-    Tooltip, Divider, Avatar, Typography,
+    Tooltip, Divider, Avatar, Typography, CircularProgress,
 } from '@mui/material';
 import { sessionDB } from '../../db';
 import InstallDesktopIcon from '@mui/icons-material/InstallDesktop';
@@ -13,7 +13,15 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import SettingsIcon from '@mui/icons-material/Settings';
 import HomeIcon from '@mui/icons-material/Home';
 import SyncIcon from '@mui/icons-material/Sync';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import SettingsBrightnessIcon from '@mui/icons-material/SettingsBrightness';
+import { useThemeMode } from '../../contexts/ThemeModeContext';
+import { useSyncContext } from '../../contexts/SyncContext';
 import type { User } from '../../types';
+
+type ThemeMode = 'auto' | 'light' | 'dark'
 
 interface Props {
     appManager: any;
@@ -23,6 +31,8 @@ interface Props {
 export default function TopBar({ appManager, user }: Props) {
     const navigate = useNavigate();
     const location = useLocation();
+    const { mode, setMode } = useThemeMode();
+    const { syncStatus, lastSyncAt } = useSyncContext();
 
     const {
         isOnline, installPrompt, isLabCached, isLabDownloading, hasLabUpdate,
@@ -43,6 +53,19 @@ export default function TopBar({ appManager, user }: Props) {
             if (s) setSessionContext({ labTitle: s.labTitle, courseTitle: s.courseTitle });
         });
     }, [location.pathname, isSession]);
+
+    const cycleTheme = () => {
+        const next: Record<ThemeMode, ThemeMode> = { auto: 'light', light: 'dark', dark: 'auto' }
+        setMode(next[mode])
+    }
+
+    const themeIcon = mode === 'light'
+        ? <LightModeIcon fontSize="small" />
+        : mode === 'dark'
+            ? <DarkModeIcon fontSize="small" />
+            : <SettingsBrightnessIcon fontSize="small" />
+
+    const themeLabel = mode === 'auto' ? 'Авто' : mode === 'light' ? 'Светлая' : 'Тёмная'
 
     return (
         <AppBar
@@ -167,6 +190,36 @@ export default function TopBar({ appManager, user }: Props) {
                         </>
                     )}
 
+                    {/* Индикатор синхронизации курсов */}
+                    {syncStatus === 'syncing' && (
+                        <Chip
+                            icon={<CircularProgress size={12} sx={{ color: 'primary.main !important' }} />}
+                            label="Синхронизация..."
+                            size="small"
+                            variant="outlined"
+                            color="primary"
+                        />
+                    )}
+                    {syncStatus === 'done' && lastSyncAt && (
+                        <Tooltip title={`Синхронизировано в ${new Date(lastSyncAt).toLocaleTimeString('ru')}`}>
+                            <Chip
+                                icon={<CloudDoneIcon sx={{ fontSize: '14px !important' }} />}
+                                label="Синхронизировано"
+                                size="small"
+                                variant="outlined"
+                                color="success"
+                            />
+                        </Tooltip>
+                    )}
+                    {syncStatus === 'error' && (
+                        <Chip
+                            icon={<WarningAmberIcon sx={{ fontSize: '14px !important' }} />}
+                            label="Ошибка синхр."
+                            size="small"
+                            color="warning"
+                        />
+                    )}
+
                     <Chip
                         icon={isOnline
                             ? <CloudDoneIcon sx={{ fontSize: '14px !important' }} />
@@ -181,6 +234,16 @@ export default function TopBar({ appManager, user }: Props) {
                             fontWeight: 600,
                         }}
                     />
+
+                    <Tooltip title={`Тема: ${themeLabel}`}>
+                        <IconButton
+                            size="small"
+                            onClick={cycleTheme}
+                            sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary', bgcolor: 'action.hover' } }}
+                        >
+                            {themeIcon}
+                        </IconButton>
+                    </Tooltip>
 
                     {installPrompt && (
                         <Tooltip title="Установить как приложение">

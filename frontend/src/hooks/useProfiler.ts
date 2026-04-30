@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { executeOnServer } from '../api/executeApi'
 
 export interface BenchmarkStats {
   min: number
@@ -8,6 +9,13 @@ export interface BenchmarkStats {
   p95: number
 }
 
+export interface ServerResult {
+  durationMs: number
+  timedOut: boolean
+  stdout: string
+  stderr: string
+}
+
 export interface BenchmarkResult {
   iterations: number
   times: number[]         // мс на каждый прогон
@@ -15,6 +23,7 @@ export interface BenchmarkResult {
   networkRtt: number | null  // RTT до сервера, мс
   language: string
   timestamp: number
+  serverResult?: ServerResult
 }
 
 function calcStats(times: number[]): BenchmarkStats {
@@ -43,6 +52,7 @@ export function useProfiler(
   getFiles: () => Record<string, string>,
   compiler: any,
   language: string,
+  mode: 'wasm-only' | 'compare' = 'wasm-only',
 ) {
   const [result, setResult] = useState<BenchmarkResult | null>(null)
   const [running, setRunning] = useState(false)
@@ -76,10 +86,17 @@ export function useProfiler(
       measureNetworkRtt(),
     ])
 
-    setResult({ iterations, times, stats, networkRtt, language, timestamp: Date.now() })
+    let serverResult: ServerResult | undefined
+    if (mode === 'compare') {
+      try {
+        serverResult = await executeOnServer({ language, files })
+      } catch { /* server unavailable — omit */ }
+    }
+
+    setResult({ iterations, times, stats, networkRtt, language, timestamp: Date.now(), serverResult })
     setRunning(false)
     setProgress(0)
-  }, [getFiles, compiler, language, running])
+  }, [getFiles, compiler, language, running, mode])
 
   const clearResult = useCallback(() => setResult(null), [])
 

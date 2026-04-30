@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import * as Y from 'yjs'
+import { Awareness } from 'y-protocols/awareness'
 import { HubConnectionBuilder, LogLevel, HubConnectionState } from '@microsoft/signalr'
 import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack'
 import type { User, Participant } from '../types'
@@ -27,14 +28,12 @@ export function useYjsSession(
   initialFiles: Record<string, string>,
   currentUser?: User | null,
 ) {
-  // Y.Doc создаётся один раз за жизнь компонента
+  // Y.Doc инициализируется до вызовов useState, чтобы fileList и activeFile
+  // были корректны уже на первом рендере (иначе редактор монтировался без файла
+  // и MonacoBinding не создавался до переключения вкладок)
   const ydocRef = useRef<Y.Doc | null>(null)
-  const connectionRef = useRef<any>(null)
-  const [fileList, setFileList] = useState<string[]>([])
-  const [activeFile, setActiveFile] = useState<string>('')
-  const [participants, setParticipants] = useState<Participant[]>([])
+  const awarenessRef = useRef<Awareness | null>(null)
 
-  // Ленивая инициализация Y.Doc (до первого рендера)
   if (!ydocRef.current) {
     const ydoc = new Y.Doc()
     ydocRef.current = ydoc
@@ -66,7 +65,22 @@ export function useYjsSession(
   const yfiles = ydoc.getMap<Y.Text>('files')
   const ypresence = ydoc.getMap<any>('presence')
 
-  // ── Presence: вписываем себя при монтировании, удаляем при размонтировании ─
+  if (!awarenessRef.current) {
+    awarenessRef.current = new Awareness(ydoc)
+  }
+  const awareness = awarenessRef.current
+
+  const connectionRef = useRef<any>(null)
+
+  // Инициализируем из yfiles синхронно — редактор получит правильный файл сразу
+  const [fileList, setFileList] = useState<string[]>(() => Array.from(yfiles.keys()).sort())
+  const [activeFile, setActiveFile] = useState<string>(() => {
+    const keys = Array.from(yfiles.keys()).sort()
+    return keys[0] ?? ''
+  })
+  const [participants, setParticipants] = useState<Participant[]>([])
+
+  // ── Presence + Awareness: вписываем себя при монтировании ───────────────────
 
   useEffect(() => {
     if (!currentUser) return
@@ -75,7 +89,15 @@ export function useYjsSession(
       color: currentUser.color,
       role: 'student' as const,
     })
-    return () => { ypresence.delete(currentUser.id) }
+    awareness.setLocalStateField('user', {
+      userId: currentUser.id,
+      username: currentUser.username,
+      color: currentUser.color,
+    })
+    return () => {
+      ypresence.delete(currentUser.id)
+      awareness.setLocalState(null)
+    }
   }, [currentUser?.id])
 
   // ── Реактивный список участников ─────────────────────────────────────────
@@ -218,9 +240,21 @@ export function useYjsSession(
     return result
   }, [])
 
+  const setMyRole = useCallback((roleId: string) => {
+    if (!currentUser) return
+    const existing = ypresence.get(currentUser.id) ?? {}
+    ypresence.set(currentUser.id, { ...existing, labRole: roleId })
+    awareness.setLocalStateField('labRole', roleId)
+  }, [currentUser?.id])
+
+  const myRole: string | undefined = currentUser
+    ? ypresence.get(currentUser.id)?.labRole
+    : undefined
+
   return {
     ydoc,
     yfiles,
+    awareness,
     fileList,
     activeFile,
     setActiveFile,
@@ -229,5 +263,7 @@ export function useYjsSession(
     renameFile,
     getFiles,
     participants,
+    myRole,
+    setMyRole,
   }
 }
