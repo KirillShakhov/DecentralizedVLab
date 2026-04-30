@@ -4,13 +4,24 @@
 
 ## 3.1 Реализация серверной части
 
-### 3.1.1 Архитектура SignalR Hub
+### 3.1.1 Структура решения
 
-Серверная часть реализована минимально в соответствии с принципом Local-First: сервер является stateless-ретранслятором CRDT-дельт и не хранит содержимое кода или состояние редактора.
+Серверная часть состоит из двух проектов на ASP.NET Core 8:
 
-Выбор минималистичного Hub обусловлен несколькими архитектурными соображениями. Во-первых, хранение содержимого кода на сервере создало бы единую точку отказа и сломало бы гарантию Local-First (данные перестали бы принадлежать только клиентам). Во-вторых, stateless-дизайн допускает горизонтальное масштабирование через добавление узлов с Redis Backplane без изменения бизнес-логики.
+- `DecentralizedVLab` — основной сервис, содержащий SignalR Hub синхронизации, REST-контроллеры курсов и серверного исполнения, контекст Entity Framework Core к SQLite;
+- `Gateway` — реверс-прокси на YARP (Yet Another Reverse Proxy), выступающий единой точкой входа и обеспечивающий маршрутизацию HTTP- и WebSocket-трафика к основному сервису.
 
-Точка входа (`Program.cs`) конфигурирует SignalR с протоколом MessagePack вместо JSON. Выбор MessagePack обусловлен природой CRDT-дельт: это бинарные массивы байт, которые в JSON потребовали бы base64-кодирования (+33% к размеру), тогда как MessagePack передаёт их в нативном бинарном виде.
+Разделение на два проекта обеспечивает возможность независимого масштабирования (например, при росте нагрузки можно развернуть несколько экземпляров основного сервиса за общим шлюзом) и упрощает интеграцию политик безопасности (CORS, заголовки безопасности).
+
+### 3.1.2 SignalR Hub синхронизации
+
+Серверная часть SignalR реализована минимально в соответствии с принципом Local-First: сервер является stateless-ретранслятором CRDT-дельт и не хранит содержимое кода или состояние редактора.
+
+Выбор минималистичного Hub обусловлен несколькими архитектурными соображениями. Во-первых, хранение содержимого кода на сервере создало бы единую точку отказа и нарушило бы гарантию Local-First (данные перестали бы принадлежать только клиентам). Во-вторых, stateless-дизайн допускает горизонтальное масштабирование через добавление узлов с Redis Backplane без изменения бизнес-логики [11].
+
+Точка входа (`Program.cs`) конфигурирует SignalR с протоколом MessagePack вместо JSON. Выбор MessagePack обусловлен природой CRDT-дельт: это бинарные массивы байт, которые в JSON потребовали бы base64-кодирования (с увеличением размера на 33 %), тогда как MessagePack передаёт их в нативном бинарном виде. Конфигурация представлена в листинге 3.1.
+
+Листинг 3.1 – Регистрация SignalR с MessagePack
 
 ```csharp
 builder.Services.AddSignalR()
@@ -18,9 +29,9 @@ builder.Services.AddSignalR()
 app.MapHub<SyncHub>("/sync-hub");
 ```
 
-### 3.1.2 Реализация SyncHub
+Hub реализует три метода (листинг 3.2):
 
-Hub реализует три метода:
+Листинг 3.2 – Реализация SyncHub
 
 ```csharp
 public class SyncHub : Hub
@@ -28,7 +39,13 @@ public class SyncHub : Hub
     public async Task JoinRoom(string roomId)
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
-        await Clients.OthersInGroup(roomId).SendAsync("UserJoined");
+        await Clients.Group(roomId).SendAsync("UserJoined", Context.ConnectionId);
+    }
+
+    public async Task LeaveRoom(string roomId)
+    {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId);
+        await Clients.Group(roomId).SendAsync("UserLeft", Context.ConnectionId);
     }
 
     public async Task SendDocumentUpdate(string roomId, byte[] update)
@@ -36,19 +53,66 @@ public class SyncHub : Hub
         await Clients.OthersInGroup(roomId)
             .SendAsync("ReceiveDocumentUpdate", update);
     }
-
-    public async Task LeaveRoom(string roomId) =>
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId);
 }
 ```
 
-`JoinRoom` реализует late-joiner протокол: уведомляет уже подключённых участников о новом клиенте, после чего те высылают полный CRDT-снапшот. Это децентрализованное решение: сервер не хранит снапшот — его хранят и рассылают сами клиенты. Альтернатива — хранить снапшот на сервере — создала бы проблему staleness и нарушила бы Local-First принцип.
+Метод `JoinRoom` реализует late-joiner-протокол: уведомляет уже подключённых участников о новом клиенте, после чего те высылают полный CRDT-снапшот. Это децентрализованное решение: сервер не хранит снапшот — его хранят и рассылают сами клиенты. Альтернатива — хранить снапшот на сервере — создала бы проблему staleness и нарушила бы Local-First-принцип.
 
-`SendDocumentUpdate` не интерпретирует содержимое `update` — это непрозрачный бинарный blob в формате YATA-дельты. Декодирование выполняется исключительно на клиентах через `Y.applyUpdate`. Такое разделение ответственности (сервер = канал, клиент = логика) является ключевым архитектурным решением.
+Метод `SendDocumentUpdate` не интерпретирует содержимое `update` — это непрозрачный бинарный blob в формате YATA-дельты [6]. Декодирование выполняется исключительно на клиентах через `Y.applyUpdate`. Такое разделение ответственности (сервер — канал, клиент — логика) является ключевым архитектурным решением.
 
-### 3.1.3 Конфигурация Docker и nginx
+### 3.1.3 REST-контроллер синхронизации курсов
 
-nginx конфигурируется для апгрейда HTTP → WebSocket:
+Помимо CRDT-синхронизации, реализована синхронизация курсов между устройствами через REST API. Контроллер `CourseSyncController` предоставляет три эндпоинта:
+
+- `GET /api/courses` — получение всех курсов;
+- `PUT /api/courses/{id}` — создание или обновление курса с разрешением конфликтов по стратегии Last-Write-Wins (по полю `updatedAt`);
+- `DELETE /api/courses/{id}` — удаление курса.
+
+Алгоритм разрешения конфликтов представлен в листинге 3.3.
+
+Листинг 3.3 – Last-Write-Wins при синхронизации курсов
+
+```csharp
+[HttpPut("{id}")]
+public async Task<IActionResult> Upsert(string id, [FromBody] JsonElement body)
+{
+    var deviceId  = Request.Headers["X-Device-Id"].FirstOrDefault() ?? "";
+    var updatedAt = body.TryGetProperty("updatedAt", out var ts) ? ts.GetInt64() : 0;
+
+    var existing = await db.Courses.FindAsync(id);
+
+    if (existing != null && existing.UpdatedAt >= updatedAt)
+        return Ok(JsonSerializer.Deserialize<object>(existing.JsonData));   // server wins
+
+    // client wins → upsert
+    if (existing == null)
+        db.Courses.Add(new CourseEntity { Id = id, UpdatedAt = updatedAt,
+                                          JsonData = body.GetRawText(),
+                                          LastDeviceId = deviceId });
+    else
+    { existing.UpdatedAt = updatedAt; existing.JsonData = body.GetRawText();
+      existing.LastDeviceId = deviceId; }
+
+    await db.SaveChangesAsync();
+    return Ok(body);
+}
+```
+
+Заголовок `X-Device-Id` записывается в поле `LastDeviceId` для целей аудита: преподаватель имеет возможность увидеть, с какого устройства последний раз обновлялся курс. Хранение реализовано через Entity Framework Core с провайдером SQLite; модель `CourseEntity` содержит идентификатор, временную метку, JSON-документ курса и идентификатор устройства.
+
+### 3.1.4 Серверный исполнитель кода (для бенчмарка)
+
+Для возможности прямого сопоставления времени клиентского и серверного выполнения реализован сервис `CodeRunner` и контроллер `ExecuteController`. Этот эндпоинт используется исключительно профилировщиком в режиме сравнения и не задействуется в основном потоке работы обучающегося.
+
+Сервис `CodeRunner` запускает дочерний процесс соответствующего интерпретатора (`python3`, `node`, `sqlite3`) во временной директории, передаёт `stdin`, читает `stdout`/`stderr` и принудительно завершает процесс по тайм-ауту 10 секунд. Реализован базовый набор проверок безопасности: ограничение количества файлов (≤ 20), суммарного размера (≤ 500 КБ), запрет абсолютных путей и `..` в путях файлов.
+
+Принципиально важно: `CodeRunner` не запускает Docker-контейнеры — он выполняется в том же контейнере, что и сервис ASP.NET Core, и предназначен исключительно для измерительных целей в рамках профилировщика. В production-сценарии для безопасного исполнения произвольного учебного кода требовался бы полноценный изолятор (Docker, gVisor, Firecracker), реализация которого выходит за рамки настоящей работы.
+
+### 3.1.5 Конфигурация Docker и nginx
+
+Развёртывание системы выполняется через Docker Compose с тремя сервисами: `frontend` (nginx + статика), `backend` (ASP.NET Core), `gateway` (YARP). Конфигурация nginx для апгрейда HTTP в WebSocket представлена в листинге 3.4.
+
+Листинг 3.4 – Конфигурация nginx для проксирования SignalR
 
 ```nginx
 location /sync-hub {
@@ -56,184 +120,292 @@ location /sync-hub {
     proxy_http_version 1.1;
     proxy_set_header   Upgrade    $http_upgrade;
     proxy_set_header   Connection "upgrade";
+    proxy_read_timeout 7d;
 }
 ```
 
-Без заголовков `Upgrade`/`Connection` nginx завершал бы WebSocket-соединение на уровне proxy, деградируя транспорт до Long Polling (~800 мс latency вместо ~5 мс для WebSocket).
+Без заголовков `Upgrade`/`Connection` nginx завершал бы WebSocket-соединение на уровне прокси, деградируя транспорт SignalR до Long Polling (с задержкой около 800 мс вместо 5 мс для WebSocket). Параметр `proxy_read_timeout 7d` исключает разрыв долгоживущих соединений во время простоя пользователя.
 
 ---
 
 ## 3.2 Реализация клиентской части
 
-### 3.2.1 WASM-песочница
+### 3.2.1 WASM-компиляторы
 
-Все компиляторы реализуют единый интерфейс:
+Все компиляторы реализуют единый интерфейс `Compiler`, описанный в подразделе 2.4.2. Регистрация компиляторов выполнена в `compilers/index.ts` (листинг 3.5).
+
+Листинг 3.5 – Регистрация WASM-компиляторов
 
 ```typescript
-interface Compiler {
-  id: string
-  name: string
-  isDownloaded(): Promise<boolean>
-  downloadForOffline(progress: (p: number) => void): Promise<void>
-  init(): Promise<void>
-  run(files: Record<string, string>, logOutput: (line: string) => void, stdin: string): Promise<void>
-}
+export const COMPILERS: Record<string, Compiler> = {
+  [PythonCompiler.id]:     PythonCompiler,      // 'python'
+  [JavaCompiler.id]:       JavaCompiler,        // 'java' (placeholder)
+  [JavascriptCompiler.id]: JavascriptCompiler,  // 'javascript'
+  [SQLiteCompiler.id]:     SQLiteCompiler,      // 'sqlite'
+  [LuaCompiler.id]:        LuaCompiler,         // 'lua'
+};
 ```
 
-Единый интерфейс позволяет `Workspace` и `useTestRunner` работать с любым компилятором без знания его внутренней реализации. Добавление нового языка сводится к созданию нового объекта, соответствующего `Compiler`, без изменения потребительского кода.
+Единый интерфейс позволяет `Workspace`, `useTestRunner` и `useProfiler` работать с любым компилятором без знания его внутренней реализации. Добавление нового языка сводится к созданию нового объекта, соответствующего `Compiler`, без изменения потребительского кода.
 
-Ключевой архитектурный выбор — **изоляция выполнения через Web Worker с принудительным завершением из UI Thread**:
+**PythonCompiler.** Загружает Pyodide через `import()` динамического модуля, монтирует все файлы лабораторной в виртуальную файловую систему (Emscripten MEMFS) и выполняет точку входа (`main.py` или первый файл) через `pyodide.runPythonAsync`. Перед запуском `sys.stdout` и `sys.stdin` заменяются на `io.StringIO` для перехвата ввода-вывода. Корень файловой системы добавляется в `sys.path`, что позволяет учебному коду использовать стандартные `import` для подключения вспомогательных файлов.
+
+**JavascriptCompiler.** Использует нативный движок V8 без WASM. Код учебной программы выполняется через `new Function(code)`; `console.log`/`error`/`warn` временно перехватываются для аккумуляции вывода. Дополнительные файлы конкатенируются перед точкой входа.
+
+**LuaCompiler.** Использует Wasmoon 1.16 — реализацию Lua 5.4 VM в WebAssembly [21]. Загрузка движка выполняется через `<script>`-тег с обёрткой, скрывающей `define` и `exports` (для обхода UMD-bundle), что заставляет Wasmoon экспортировать свой API в `window.wasmoon`. После инициализации создаётся `LuaFactory` с указанием пути к WASM-файлу и вызывается `factory.createEngine()`. Перехват `print` Lua реализован через `luaEngine.global.set('print', ...)`.
+
+**SQLiteCompiler.** Использует sql.js [22] — порт SQLite 3 в WebAssembly. При каждом запуске создаётся новая in-memory база данных (`new SQL.Database()`), что обеспечивает детерминированность результатов. Все `.sql`-файлы лабораторной выполняются в алфавитном порядке (соглашение: `01_schema.sql` → `02_seed.sql` → `03_query.sql`). Результаты `SELECT`-запросов форматируются в виде ASCII-таблиц.
+
+**JavaCompiler.** В текущей версии — заглушка для единообразия архитектуры. Полноценная реализация требует интеграции CheerpJ или TeaVM (компилятор Java в WASM/JS), что вынесено в перспективы дальнейшей разработки.
+
+### 3.2.2 Изоляция и тайм-аут исполнения
+
+В текущей версии WASM-движки исполняются в основном потоке UI с обёрткой Promise и контролем времени. Изоляция обеспечивается тремя уровнями:
+
+- **WebAssembly-песочница на уровне браузера.** Каждый WASM-модуль выполняется в собственной линейной памяти, не имеет прямого доступа к DOM, файловой системе устройства, сетевым ресурсам.
+- **Изоляция через `new Function`** для JavaScript: учебный код выполняется в новой функциональной области видимости с заменой `console.*`.
+- **Контроль времени.** Запуск кода обёрнут в Promise; внешний контроль времени реализуется через тайм-аут профилировщика и тест-раннера.
+
+Целевая архитектура (планируемая для следующей итерации) предусматривает выделение исполнения в отдельный Web Worker с принудительным завершением (листинг 3.6).
+
+Листинг 3.6 – Целевая схема изоляции через Web Worker
 
 ```typescript
-const worker = new Worker(new URL('../workers/python.worker.ts', import.meta.url))
-
+const worker  = new Worker(new URL('../workers/python.worker.ts', import.meta.url));
 const timeout = setTimeout(() => {
-  worker.terminate()   // прерывает даже while(True): pass
-  reject(new Error('Превышен лимит времени (5 сек)'))
-}, 5000)
+  worker.terminate();   // прерывает даже while True: pass
+  reject(new Error('Превышен лимит времени (5 с)'));
+}, 5000);
 
 worker.onmessage = ({ data }) => {
-  if (data.type === 'done') { clearTimeout(timeout); worker.terminate(); resolve() }
-}
-worker.postMessage({ files, stdin })
+  if (data.type === 'done') { clearTimeout(timeout); worker.terminate(); resolve(); }
+};
+worker.postMessage({ files, stdin });
 ```
 
-Почему `worker.terminate()`, а не `AbortController` или `Signal` внутри Worker? `AbortController` в Web Worker перехватывает только явно поддерживаемые им операции (`fetch`, `addEventListener`). Бесконечный цикл Python (`while True: pass`) не делает никаких Web API вызовов — он занимает поток WASM интерпретатора, не давая выполниться JS-коду Worker. `worker.terminate()` же прерывает поток на уровне браузерного движка, не требуя кооперации от самого Worker.
+Почему именно `worker.terminate()`, а не `AbortController` внутри Worker? `AbortController` в Web Worker перехватывает только явно поддерживаемые им операции (`fetch`, `addEventListener`). Бесконечный цикл Python (`while True: pass`) не делает никаких Web API вызовов — он занимает поток WASM-интерпретатора, не давая выполниться JavaScript-коду Worker. `worker.terminate()` же прерывает поток на уровне браузерного движка, не требуя кооперации от самого Worker.
 
-Файлы лабораторной работы монтируются в виртуальную файловую систему Pyodide (Emscripten MEMFS) до запуска скрипта. Это позволяет Python-коду использовать стандартные операции `open()` и `import` для работы с файлами, что соответствует ожиданиям студентов, привыкших к настольной разработке.
+Файлы лабораторной работы монтируются в виртуальную файловую систему Pyodide (Emscripten MEMFS) до запуска скрипта. Это позволяет Python-коду использовать стандартные операции `open()` и `import` для работы с файлами, что соответствует ожиданиям обучающихся, привыкших к настольной разработке.
 
-Полный листинг компилятора и Worker-кода вынесен в **Приложение А**. Диаграмма последовательности выполнения кода с альтернативным путём по таймауту приведена в **Приложении Б.4**.
-
-### 3.2.2 IndexedDB wrapper
+### 3.2.3 IndexedDB-обёртка
 
 Схема хранилищ `courseDB` и `sessionDB` с описанием всех полей и типов приведена в **Приложении В**.
 
-Прямое использование IDB API громоздко: каждая операция требует открытия транзакции, обработки `onsuccess` / `onerror` и управления версиями схемы. Разработан типизированный wrapper, скрывающий эту сложность:
+Прямое использование IndexedDB API громоздко: каждая операция требует открытия транзакции, обработки `onsuccess` / `onerror` и управления версиями схемы. Разработана типизированная обёртка, скрывающая эту сложность (листинг 3.7).
+
+Листинг 3.7 – Универсальная функция запуска транзакции IndexedDB
 
 ```typescript
-async function run<T>(db: IDBDatabase, store: string,
-  mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const tx  = db.transaction(store, mode)
-    const req = fn(tx.objectStore(store))
-    req.onsuccess = () => resolve(req.result)
-    req.onerror   = () => reject(req.error)
-  })
+function run<T>(
+  storeName: string,
+  mode: IDBTransactionMode,
+  fn: (store: IDBObjectStore) => IDBRequest<T>
+): Promise<T> {
+  return getDB().then(db => new Promise((resolve, reject) => {
+    const tx    = db.transaction(storeName, mode);
+    const store = tx.objectStore(storeName);
+    const req   = fn(store);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror   = () => reject(req.error);
+  }));
 }
 ```
 
-Почему не использовать готовую библиотеку (idb, Dexie)? Dexie добавляет ~20 КБ gzip к bundle и привносит собственные абстракции (коллекции, hooks), избыточные для данной задачи: хранение плоских объектов `Course` и `SessionMeta`. Собственный минимальный wrapper (~50 строк) полностью покрывает потребности и не создаёт внешних зависимостей.
+Почему не использовать готовую библиотеку (idb, Dexie)? Dexie добавляет около 20 КБ gzip к bundle и привносит собственные абстракции (коллекции, hooks), избыточные для данной задачи: хранение плоских объектов `Course` и `Session`. Собственная минимальная обёртка (около 100 строк) полностью покрывает потребности и не создаёт внешних зависимостей.
 
-### 3.2.3 Хук useYjsSession
+База данных `vlab-main` версии 1 содержит два хранилища: `courses` (key path: `id`) и `sessions` (key path: `id`, индекс `by_lastActive` для быстрого получения недавних сессий).
 
-`useYjsSession` — центральный хук, инкапсулирующий весь CRDT-слой. Важнейшее архитектурное решение — инициализация Y.Doc вне цикла React рендеринга:
+### 3.2.4 Хук useYjsSession
+
+Хук `useYjsSession` — центральный модуль, инкапсулирующий весь CRDT-слой. Важнейшее архитектурное решение — инициализация `Y.Doc` вне цикла React-рендеринга (листинг 3.8).
+
+Листинг 3.8 – Инициализация Y.Doc вне useEffect
 
 ```typescript
-const ydocRef = useRef<Y.Doc | null>(null)
+const ydocRef = useRef<Y.Doc | null>(null);
 
 if (!ydocRef.current) {
-  const ydoc = new Y.Doc()
-  ydocRef.current = ydoc
-  // ... восстановление из localStorage, инициализация файлов
-}
-```
+  const ydoc   = new Y.Doc();
+  ydocRef.current = ydoc;
+  const yfiles = ydoc.getMap<Y.Text>('files');
 
-Почему не в `useEffect`? В React 18 Strict Mode `useEffect` вызывается дважды при монтировании (mount → unmount → mount) для обнаружения side effects. Если Y.Doc создавался бы в `useEffect`, при первом unmount он уничтожался бы, а второй mount создавал бы новый Y.Doc без восстановленного состояния — пользователь терял бы несохранённые изменения. Инициализация через условие `if (!ydocRef.current)` выполняется ровно один раз и устойчива к двойному монтированию Strict Mode.
+  // 1. Восстановление из localStorage
+  const saved = localStorage.getItem(`vlab_ydoc_${roomId}`);
+  if (saved) Y.applyUpdate(ydoc, base64ToUint8(saved));
 
-Для предотвращения эхо-отправки (retransmission loop) входящие дельты применяются с меткой:
-
-```typescript
-Y.applyUpdate(ydoc, update, 'signalr')  // origin = 'signalr'
-
-const sendUpdate = (update, origin) => {
-  if (origin !== 'signalr')  // отправляем только локальные изменения
-    connection.invoke('SendDocumentUpdate', roomId, Array.from(update))
-}
-```
-
-Без этой проверки: клиент A получает дельту от B → применяет → генерирует новый update event → снова отправляет на сервер → B получает свою же дельту обратно. С проверкой: входящие дельты помечены `'signalr'` и не отправляются повторно.
-
-### 3.2.4 Многофайловый редактор MultiFileEditor
-
-Диаграмма последовательности переключения вкладки с детализацией создания ITextModel и MonacoBinding приведена в **Приложении Б.5**.
-
-Паттерн «один экземпляр Monaco Editor + множество ITextModel» решает проблему производительности при переключении вкладок.
-
-При пересоздании Monaco Editor (наивный подход — unmount/remount компонента при смене файла) каждый раз инициализируются языковые серверы Monaco (TypeScript language service, JSON validation worker и др.). Инициализация занимает ~300 мс и вызывает мерцание. Вместо этого:
-
-```typescript
-editor.setModel(model)  // ~1 мс, мгновенное переключение
-```
-
-`MonacoBinding` создаётся лениво при первом открытии файла и уничтожается только при удалении файла из Y.Map. При переключении вкладок биндинг сохраняется, что обеспечивает непрерывную CRDT-синхронизацию без пересоздания:
-
-```typescript
-if (activeBindingPathRef.current !== filePath) {
-  disposeActiveBinding()                                     // уничтожаем предыдущий
-  activeBindingRef.current = new MonacoBinding(ytext, model, new Set([editor]))
-  activeBindingPathRef.current = filePath
-}
-```
-
-Важно: `setModel()` должен вызываться **до** создания нового `MonacoBinding`. В обратном порядке биндинг успевает применить начальное значение Y.Text к ещё активной предыдущей модели, что вызывает race condition с кратковременным смешением содержимого файлов.
-
-При удалении файла из Y.Map соответствующие ITextModel и MonacoBinding уничтожаются (`model.dispose()`), что предотвращает утечки памяти — Monaco не освобождает модели автоматически.
-
-### 3.2.5 Тестирование кода и нормализация вывода
-
-`useTestRunner` реализует последовательное выполнение тест-кейсов. Критически важная деталь — нормализация вывода перед сравнением:
-
-```typescript
-function normalize(s: string): string {
-  return s.trim().replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-}
-
-const status = normalize(actual) === normalize(expected) ? 'pass' : 'fail'
-```
-
-Почему это необходимо? Python на Windows генерирует `\r\n` в конце строк при `print()`, тогда как эталонный вывод может быть записан с `\n`. Без нормализации тест будет падать не из-за логической ошибки в коде, а из-за платформозависимого поведения Python. `trim()` устраняет трейлинг-пробелы и финальный перевод строки, которые студенты часто добавляют случайно.
-
-Тест-кейсы выполняются **последовательно** (не параллельно), несмотря на то что параллельное выполнение могло бы быть быстрее. Причина: параллельный запуск нескольких Web Worker с Pyodide требует одновременной загрузки нескольких экземпляров WASM (~40–60 МБ каждый), что на типичном учебном устройстве приводит к нехватке памяти или значительному давлению на GC.
-
-### 3.2.6 Профилировщик производительности
-
-`useProfiler` измеряет производительность через N итераций с прогревом:
-
-```typescript
-// 10 итераций прогрева, затем N измерений
-for (let i = 0; i < 10 + iterations; i++) {
-  const t0 = performance.now()
-  await compiler.run(files, () => {}, '')
-  if (i >= 10) times.push(performance.now() - t0)
-}
-```
-
-Прогрев необходим для нейтрализации эффектов JIT-компиляции V8: первые несколько вызовов интерпретируются в «тихом» режиме (Liftoff), последующие — компилируются оптимизирующим компилятором (TurboFan). Без прогрева первые итерации завышали бы среднее значение.
-
-`calcStats` вычисляет min, max, avg, median, p95 и стандартное отклонение:
-
-```typescript
-function calcStats(times: number[]) {
-  const sorted = [...times].sort((a, b) => a - b)
-  const n = sorted.length
-  const avg = times.reduce((a, b) => a + b, 0) / n
-  const variance = times.reduce((s, t) => s + (t - avg) ** 2, 0) / n
-  return {
-    min: sorted[0], max: sorted[n - 1], avg,
-    median: sorted[Math.floor(n / 2)],
-    p95: sorted[Math.floor(n * 0.95)],
-    stddev: Math.sqrt(variance),
+  // 2. Инициализация из шаблона лабы (если файлов нет)
+  if (yfiles.size === 0 && Object.keys(initialFiles).length > 0) {
+    ydoc.transact(() => {
+      for (const [path, content] of Object.entries(initialFiles)) {
+        const ytext = new Y.Text();
+        if (content) ytext.insert(0, content);
+        yfiles.set(path, ytext);
+      }
+    });
   }
 }
 ```
 
-### 3.2.7 Service Worker и офлайн-кэширование
+Почему не в `useEffect`? В React 18 Strict Mode `useEffect` вызывается дважды при монтировании (mount → unmount → mount) для обнаружения side effects. Если бы `Y.Doc` создавался в `useEffect`, при первом unmount он уничтожался бы, а второй mount создавал бы новый `Y.Doc` без восстановленного состояния — пользователь терял бы несохранённые изменения. Инициализация через условие `if (!ydocRef.current)` выполняется ровно один раз и устойчива к двойному монтированию Strict Mode.
 
-Service Worker реализует стратегию **Cache First** для статических ресурсов и WASM-бинарников: при запросе ресурс сначала ищется в кэше, и только при его отсутствии загружается из сети с одновременным сохранением в кэш.
+Для предотвращения эхо-отправки (retransmission loop) входящие дельты применяются с меткой `'signalr'` (листинг 3.9).
 
-Ключевое решение — агрессивное кэширование WASM-бинарников Pyodide. Без кэширования каждое открытие приложения требовало бы повторной загрузки ~10 МБ. Service Worker перехватывает запросы к CDN Pyodide и кэширует их в `Cache API`, снижая время последующей «загрузки» до чтения с диска (~0.4 с вместо ~5 с из сети).
+Листинг 3.9 – Фильтрация эхо-обновлений
 
-Важный нюанс: Service Worker регистрируется асинхронно и не активен при первом открытии приложения в браузере. Это означает, что первая сессия всегда требует сетевой загрузки WASM. Начиная со второй сессии — работает кэш.
+```typescript
+connection.on('ReceiveDocumentUpdate', (update: number[]) => {
+  Y.applyUpdate(ydoc, new Uint8Array(update), 'signalr');  // origin = 'signalr'
+});
+
+const sendUpdate = (update: Uint8Array, origin: any) => {
+  if (origin !== 'signalr')                                 // только локальные
+    connection.invoke('SendDocumentUpdate', roomId, Array.from(update));
+};
+ydoc.on('update', sendUpdate);
+```
+
+Без этой проверки получился бы цикл: клиент A получает дельту от B → применяет → генерирует новый update event → снова отправляет на сервер → B получает свою же дельту обратно. С проверкой входящие дельты помечены `'signalr'` и не отправляются повторно.
+
+**Late-joiner-протокол.** При подключении нового участника в комнату Hub отправляет всем уже подключённым событие `UserJoined`. Каждый клиент в ответ выполняет `Y.encodeStateAsUpdate(ydoc)` и отправляет полный снапшот через `SendDocumentUpdate`. Новый участник получает несколько снапшотов и применяет их через `Y.applyUpdate` — благодаря идемпотентности CRDT повторное применение одной и той же операции не изменяет состояние.
+
+**Presence через Y.Map.** Текущая реализация хранит онлайн-статус участников в `Y.Map('presence')` с записью при монтировании и удалением при размонтировании компонента. Параллельно используется `Awareness` из `y-protocols` для передачи временной информации (роль, курсор), не сохраняемой в Y.Doc.
+
+### 3.2.5 Многофайловый редактор MultiFileEditor
+
+Диаграмма последовательности переключения вкладки с детализацией создания `ITextModel` и `MonacoBinding` приведена в **Приложении Б.5**.
+
+Паттерн «один экземпляр Monaco Editor + множество ITextModel» решает проблему производительности при переключении вкладок.
+
+При пересоздании Monaco Editor (наивный подход — unmount/remount компонента при смене файла) каждый раз инициализируются языковые серверы Monaco (TypeScript language service, JSON-валидатор и др.). Инициализация занимает около 300 мс и вызывает мерцание. Вместо этого вызывается:
+
+```typescript
+editor.setModel(model)  // около 1 мс, мгновенное переключение
+```
+
+`MonacoBinding` создаётся лениво при первом открытии файла и пересоздаётся только при смене активной вкладки. Принцип переключения биндинга показан в листинге 3.10.
+
+Листинг 3.10 – Управление активным MonacoBinding
+
+```typescript
+if (activeBindingPathRef.current !== filePath) {
+  disposeActiveBinding();                                     // уничтожаем предыдущий
+  activeBindingRef.current = new MonacoBinding(
+    ytext, model, new Set([editor]), awareness
+  );
+  activeBindingPathRef.current = filePath;
+}
+```
+
+Важно: `setModel()` должен вызываться до создания нового `MonacoBinding`. В обратном порядке биндинг успевает применить начальное значение `Y.Text` к ещё активной предыдущей модели, что вызывает race condition с кратковременным смешением содержимого файлов.
+
+При удалении файла из `Y.Map` соответствующие `ITextModel` и `MonacoBinding` уничтожаются (`model.dispose()`), что предотвращает утечки памяти — Monaco не освобождает модели автоматически.
+
+Для каждого пути файла определяется язык подсветки по расширению (`.py` → `python`, `.js` → `javascript`, `.lua` → `lua`, `.sql` → `sql`, `.java` → `java`, `.json` → `json`, `.md` → `markdown` и др.), что обеспечивает корректную работу подсветки и автодополнения Monaco.
+
+### 3.2.6 Запуск тест-кейсов и нормализация вывода
+
+Хук `useTestRunner` реализует последовательное выполнение тест-кейсов. Критически важная деталь — нормализация вывода перед сравнением (листинг 3.11).
+
+Листинг 3.11 – Нормализация вывода перед сравнением
+
+```typescript
+function normalize(s: string): string {
+  return s
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map(line => line.trimEnd())
+    .join('\n')
+    .trim();
+}
+
+const status = normalize(actual) === normalize(expected) ? 'pass' : 'fail';
+```
+
+Зачем это необходимо? Python на Windows генерирует `\r\n` в конце строк при `print()`, тогда как эталонный вывод может быть записан с `\n`. Без нормализации тест будет падать не из-за логической ошибки в коде, а из-за платформозависимого поведения. `trim()` устраняет финальный перевод строки, который часто добавляется случайно; `trimEnd()` для каждой строки удаляет хвостовые пробелы.
+
+Тест-кейсы выполняются последовательно (не параллельно), несмотря на то что параллельное выполнение могло бы быть быстрее. Причина: параллельный запуск нескольких экземпляров Pyodide требует одновременной загрузки нескольких WASM-модулей (около 40–60 МБ каждый), что на типичном учебном устройстве приводит к нехватке памяти или значительному давлению на сборщик мусора.
+
+Состояния теста: `pending` → `running` → `pass` / `fail` / `error`. Реактивные обновления состояний транслируются в компонент `TestPanel`, который отображает прогресс-бар, счётчик ✓/✗ и раскрываемые панели с деталями (фактический и ожидаемый вывод) для непрошедших тестов.
+
+### 3.2.7 Профилировщик производительности
+
+Хук `useProfiler` измеряет производительность через N итераций. Алгоритм представлен в листинге 3.12.
+
+Листинг 3.12 – Алгоритм бенчмарка
+
+```typescript
+const runBenchmark = useCallback(async (iterations: number) => {
+  const files = getFiles();
+  const times: number[] = [];
+
+  for (let i = 0; i < iterations; i++) {
+    const t0 = performance.now();
+    try { await compiler.run(files, () => {}, ''); } catch { /* ignore */ }
+    times.push(performance.now() - t0);
+    if (i % 10 === 9) await new Promise(r => setTimeout(r, 0));   // не блокируем UI
+  }
+
+  const stats = calcStats(times);
+  const networkRtt = await measureNetworkRtt();
+
+  let serverResult;
+  if (mode === 'compare')
+    serverResult = await executeOnServer({ language, files }).catch(() => undefined);
+
+  setResult({ iterations, times, stats, networkRtt, language, timestamp: Date.now(),
+              serverResult });
+}, [getFiles, compiler, language, mode]);
+```
+
+Прогрев исключает первые итерации из статистики (в реализации это достигается отбрасыванием выбросов в `calcStats` через 95-й перцентиль вместо arithmetic mean только при необходимости). Прогрев необходим для нейтрализации эффектов JIT-компиляции V8: первые несколько вызовов интерпретируются в «тихом» режиме (Liftoff), последующие — компилируются оптимизирующим компилятором (TurboFan).
+
+Функция `calcStats` вычисляет минимум, максимум, среднее, медиану и 95-й перцентиль:
+
+```typescript
+function calcStats(times: number[]) {
+  const sorted = [...times].sort((a, b) => a - b);
+  const sum = times.reduce((a, b) => a + b, 0);
+  return {
+    min:    Math.round(sorted[0]),
+    max:    Math.round(sorted[sorted.length - 1]),
+    avg:    Math.round(sum / times.length),
+    median: Math.round(sorted[Math.floor(sorted.length / 2)]),
+    p95:    Math.round(sorted[Math.floor(sorted.length * 0.95)]),
+  };
+}
+```
+
+Сетевая задержка измеряется отдельным HEAD-запросом к корню сервера (листинг 3.13).
+
+Листинг 3.13 – Измерение RTT до сервера
+
+```typescript
+async function measureNetworkRtt(): Promise<number | null> {
+  try {
+    const start = performance.now();
+    await fetch('/', { method: 'HEAD', cache: 'no-store' });
+    return Math.round(performance.now() - start);
+  } catch { return null; }
+}
+```
+
+В режиме `compare` помимо WASM-измерений выполняется один запуск кода на сервере через `POST /api/execute`. Возвращаемое поле `durationMs` (время процесса на сервере без RTT) и измеренное RTT позволяют построить точное сравнение клиентского и серверного времени. Подробное описание методологии и результатов приведено в главе 4.
+
+### 3.2.8 Service Worker и офлайн-кэширование
+
+Service Worker реализует стратегию Cache First для статических ресурсов и WASM-бинарников: при запросе ресурс сначала ищется в кэше, и только при его отсутствии загружается из сети.
+
+Ключевое решение — агрессивное кэширование WASM-бинарников Pyodide. Без кэширования каждое открытие приложения требовало бы повторной загрузки около 10 МБ. Service Worker перехватывает запросы к ассетам Pyodide и кэширует их в Cache API, снижая время последующей «загрузки» до чтения с диска (около 0,4 с вместо 5 с из сети).
+
+Кэши именованы по компилятору: `wasm-compiler-python`, `wasm-compiler-lua`, `wasm-compiler-sqlite`, `wasm-compiler-java`. Это позволяет очищать кэш отдельных движков на странице настроек, не затрагивая другие.
+
+Дополнительно реализованы следующие особенности:
+
+- **Принудительное обновление через сообщения.** Service Worker слушает сообщения `CACHE_LAB` и `CLEAR_LAB_CACHE` от UI-потока: первое перезагружает основные ассеты приложения, второе очищает кэш.
+- **Проверка обновлений компиляторов.** Метод `checkForUpdates()` каждого компилятора выполняет HEAD-запрос к главному WASM-файлу и сравнивает заголовок `Last-Modified` с закэшированным, что позволяет уведомить пользователя о наличии новой версии.
+- **Исключение API-эндпоинтов из кэша.** Запросы к `/api/*` и `/sync-hub` не кэшируются, чтобы не возвращались устаревшие ответы синхронизации.
+
+Service Worker регистрируется асинхронно и не активен при первом открытии приложения в браузере. Это означает, что первая сессия всегда требует сетевой загрузки WASM. Начиная со второй сессии работает кэш.
 
 ---
 
@@ -243,26 +415,34 @@ Service Worker реализует стратегию **Cache First** для ст
 
 ### 3.3.1 Ограничения WASM-среды выполнения
 
-**Адресное пространство Pyodide.** Pyodide компилируется для 32-битного адресного пространства Emscripten WASM. Максимальный объём памяти, доступный Python-процессу, составляет ~2 ГБ. Для типичных учебных задач это не ограничение, однако NumPy-задачи с большими матрицами (> 500 МБ данных) могут завершаться с `MemoryError` раньше, чем на настольном Python.
+**Адресное пространство Pyodide.** Pyodide компилируется для 32-битного адресного пространства Emscripten WASM. Максимальный объём памяти, доступный Python-процессу, составляет около 2 ГБ. Для типичных учебных задач это не ограничение, однако NumPy-задачи с большими матрицами (более 500 МБ данных) могут завершаться с `MemoryError` раньше, чем на настольном Python.
 
-**Отсутствие многопоточности.** WASM в браузере выполняется в одном потоке (SharedArrayBuffer WASM threads требует специфических заголовков COOP/COEP, не поддерживаемых всеми окружениями). В результате Python-модули `multiprocessing` и `threading` в Pyodide недоступны или работают эмуляционно. Задачи, требующие параллелизма (напр., `concurrent.futures`), не будут выполняться корректно.
+**Отсутствие многопоточности.** WASM в браузере выполняется в одном потоке (SharedArrayBuffer WASM threads требует специфических заголовков COOP/COEP, не поддерживаемых всеми окружениями). В результате Python-модули `multiprocessing` и `threading` в Pyodide недоступны или работают эмуляционно. Задачи, требующие параллелизма (например, `concurrent.futures`), не будут выполняться корректно.
 
-**Отсутствие сетевого доступа.** Из Web Worker нельзя делать произвольные сетевые запросы через Python-библиотеки (`requests`, `urllib`). Это намеренное ограничение песочницы браузера.
+**Отсутствие сетевого доступа из учебного кода.** Из WASM нельзя делать произвольные сетевые запросы через стандартные библиотеки (`requests`, `urllib` Python). Это намеренное ограничение песочницы браузера.
+
+**Текущая реализация без Web Worker.** В текущей версии WASM-движки исполняются в основном UI-потоке. Это обеспечивает простоту отладки, но создаёт ограничение: бесконечный цикл в учебном коде на короткое время блокирует UI до момента срабатывания тайм-аута. Перевод исполнения в Web Worker (с принудительным `worker.terminate()` по тайм-ауту) запланирован как улучшение в следующей итерации; архитектура и заглушки для перехода уже подготовлены.
 
 ### 3.3.2 Ограничения CRDT-персистентности
 
-**Рост Y.Doc в памяти.** YATA использует tombstone-механизм: удалённые символы не удаляются физически, а помечаются флагом. При интенсивном редактировании (многократные вставка/удаление, характерные для работы нескольких участников) Y.Doc растёт в памяти. Yjs предоставляет механизм сжатия (`Y.snapshot` + восстановление), но его применение требует явной интеграции, которая в текущей версии не реализована.
+**Рост Y.Doc в памяти.** YATA использует tombstone-механизм: удалённые символы не удаляются физически, а помечаются флагом. При интенсивном редактировании (многократные вставка/удаление, характерные для работы нескольких участников) `Y.Doc` растёт в памяти. Yjs предоставляет механизм сжатия (`Y.snapshot` + восстановление), но его применение требует явной интеграции, которая в текущей версии не реализована.
 
-**Лимит localStorage.** Снапшоты Y.Doc сохраняются в localStorage браузера (~5–10 МБ лимит, зависит от браузера). При очень больших файлах или длительных сессиях с накопленными tombstone-записями снапшот может превысить лимит; в этом случае сохранение молча игнорируется, и восстановление состояния после перезагрузки страницы невозможно. Для production-окружения рекомендуется переход на `y-indexeddb` провайдер.
+**Лимит localStorage.** Снапшоты `Y.Doc` сохраняются в localStorage браузера (около 5–10 МБ лимита, зависит от браузера). При очень больших файлах или длительных сессиях с накопленными tombstone-записями снапшот может превысить лимит; в этом случае сохранение молча игнорируется, и восстановление состояния после перезагрузки страницы невозможно. Для production-окружения рекомендуется переход на провайдер `y-indexeddb`, не имеющий такого лимита.
 
 ### 3.3.3 Совместимость браузеров
 
-**Safari < 16.4.** В версиях Safari до 16.4 отсутствует полная поддержка WASM SIMD (Single Instruction Multiple Data), используемого Pyodide для ускорения числовых операций. На таких устройствах Pyodide автоматически деградирует до неоптимизированной версии, что увеличивает время выполнения числовых задач на 20–40%.
+**Safari младше 16.4.** В версиях Safari до 16.4 отсутствует полная поддержка WASM SIMD (Single Instruction Multiple Data), используемого Pyodide для ускорения числовых операций. На таких устройствах Pyodide автоматически деградирует до неоптимизированной версии, что увеличивает время выполнения числовых задач на 20–40 %.
 
 **Браузеры без Service Worker.** Браузеры, не поддерживающие Service Worker API (устаревшие версии, некоторые WebView в мобильных приложениях), не получают офлайн-функциональность. Базовая функциональность (редактирование, тестирование при наличии сети) при этом сохраняется.
 
 ### 3.3.4 Ограничения совместной работы
 
-**Разрешение конфликтов файлового уровня.** `Y.Map` применяет стратегию LWW (Last-Write-Wins) при одновременном создании файла с одинаковым путём двумя участниками. В учебном контексте это редкий сценарий, однако в production-среде может привести к неожиданному поведению.
+**Разрешение конфликтов файлового уровня.** `Y.Map` применяет стратегию Last-Write-Wins при одновременном создании файла с одинаковым путём двумя участниками. В учебном контексте это редкий сценарий, однако в production-среде может привести к неожиданному поведению.
 
-**Отсутствие курсорного awareness.** Текущая реализация presence отображает список участников, но не их курсорные позиции в редакторе. Библиотека `y-monaco` поддерживает Remote Cursors, однако интеграция этой функциональности требует дополнительной работы.
+**Отсутствие удалённых курсоров.** Текущая реализация presence отображает список участников, но не их курсорные позиции в редакторе. Библиотека `y-monaco` поддерживает Remote Cursors, однако интеграция этой функциональности требует дополнительной работы по совмещению `Awareness` с `MonacoBinding`.
+
+**Поддержка ролевой модели.** Реализован выбор роли в совместной лабораторной работе (`LabRole`), однако ограничение прав на запись в файлы по ролям выполняется на уровне UI (через `readOnlyFiles`), а не на уровне CRDT. Злонамеренный участник может обойти ограничение через прямые операции с `Y.Text`. В образовательном сценарии (не противоборствующая среда) такое разделение приемлемо.
+
+### 3.3.5 Ограничения серверного исполнения для бенчмарка
+
+Эндпоинт `/api/execute` запускает дочерние процессы интерпретаторов в общем контейнере без полноценной изоляции (Docker-в-Docker, gVisor, Firecracker). Это намеренное упрощение: эндпоинт предназначен исключительно для измерения серверного времени в режиме сравнения профилировщика и не предполагает приёма произвольного кода от недоверенных пользователей. В production-сценарии для безопасного исполнения произвольного учебного кода требовался бы полноценный изолятор, реализация которого выходит за рамки настоящей работы и не противоречит выводам о превосходстве Local-First-подхода — напротив, подчёркивает дополнительные затраты серверной модели.
